@@ -2,10 +2,15 @@
 
 _Last updated by the autonomous run, 2026-06-21._
 
-## TL;DR
-- **The product is built, working, and deploy-ready.** Full test suite **211/211 green**, `tsc` clean, server boots, and the app is already migrated for hosting (Supabase storage driver + Vercel serverless entry + `supabase/setup.sql`). It's committed to a local git repo.
-- **The final go-live (GitHub push + Vercel production URL) needs YOUR account auth, which I could not do headless while you were away.** Specifically: no `gh` CLI / no git remote, no `vercel` CLI / token, the Supabase connector reported "Not connected", and `.env` holds only your Anthropic key (no Vercel/Supabase tokens). I did **not** fake a URL.
-- **What you do on return: ~5–10 minutes**, three steps below. Everything is pre-built for it.
+## ✅ LIVE — all three deliverables done (2026-06-21)
+- **Live production URL: https://fundaccounting.vercel.app** — deployed to Vercel (project `fundaccounting`, status READY). `/api/health` → `{ok:true, aiConfigured:true, model:claude-opus-4-8}` (the AI key is configured in production). The root redirects to a working **sign-in page** (`THCP Autopilot — Sign in`) — the app is auth-gated, correct for a financial app handling client data.
+- **GitHub: pushed** to `github.com/a4servicesmalta-max/fundaccounting` (private), `origin/main` == local. Latest commit `b7ad78a`.
+- **Final working product:** 211/211 tests green, tsc clean; full 2022 reconciliation validated (TB ties €83,077,192.72, share capital exact, **P&L clean**); accounting test-and-fix loop verdict **shippable** (approval gate held on every ingest, 0 P1). 3 NEEDS-HUMAN judgement items in `qa/JE_LOOP_RESULTS.md`.
+- **Sign-in:** the app now sits behind a login (added during deployment). Use your configured credentials. To redeploy after changes: `vercel deploy --prod` from this folder.
+- **Persistence note:** if `STORAGE_DRIVER=supabase` is set in the Vercel env (with the Supabase keys), books + uploads persist via Supabase; otherwise the file driver is ephemeral on Vercel — run `supabase/setup.sql` and set the env vars (below) for durable storage.
+
+---
+## Original go-live runbook (for reference / re-deploy)
 
 ## What's done (the working product)
 - Accounting engine, document intake, bank/AR-AP/loans, trust/audit layer, management accounts (P&L/BS), portfolio + month-close revaluation, FS report. 211 automated tests pass.

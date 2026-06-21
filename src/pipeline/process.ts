@@ -33,7 +33,7 @@ import { getDailyRateToEur } from '../fx/daily';
 import { accountName } from '../core/chart';
 import { loadRates } from '../fx/rates';
 import { toContent } from './extract-content';
-import { carryingValueFor } from '../report/positions';
+import { carryingValueFor, disposalCarryingCost, unitsHeldFor } from '../report/positions';
 
 
 /** Map a mime type to a file extension (fallback for files with no extension). */
@@ -445,13 +445,29 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     };
 
     // 6. DISPOSAL / WRITE_OFF need the carrying cost from the current posted position.
+    //    A PARTIAL disposal (selling some of the units held) must release only the
+    //    proportionate carrying amount of the units sold — not the whole position
+    //    (IFRS: cost flows out on carrying amount, pro-rata). disposalCarryingCost
+    //    handles the proportioning when both the units sold and the units held are
+    //    known; otherwise it falls back to the full carrying value.
     let carryingCostFunctional: number | undefined;
     let note: string | null = null;
     if (intent.eventType === 'DISPOSAL' || intent.eventType === 'WRITE_OFF') {
-      const carrying = carryingValueFor(controlCode);
-      carryingCostFunctional = carrying;
-      if (carrying === 0) {
+      const fullCarrying = carryingValueFor(controlCode);
+      const qtySold = intent.sourceFigures?.quantity ?? null;
+      const unitsHeld = unitsHeldFor(controlCode);
+      // Proportion only a partial SHARE disposal; a write-off removes the whole position.
+      carryingCostFunctional =
+        intent.eventType === 'DISPOSAL'
+          ? disposalCarryingCost(controlCode, qtySold)
+          : fullCarrying;
+      if (fullCarrying === 0) {
         note = 'Carrying cost is 0/unknown for this position — please review before posting.';
+      } else if (
+        intent.eventType === 'DISPOSAL' &&
+        typeof qtySold === 'number' && qtySold > 0 && unitsHeld > 0 && qtySold < unitsHeld
+      ) {
+        note = `Partial disposal: ${qtySold} of ${unitsHeld} units — released ${carryingCostFunctional} of ${fullCarrying} carrying cost. Please review.`;
       }
     }
 

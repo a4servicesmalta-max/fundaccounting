@@ -541,7 +541,7 @@ export async function reclassifyDocument(documentId: string, action: ReclassifyA
   let content;
   try {
     const buffer = await readObject(doc.storedPath);
-    content = toContent(doc.mime, fileName, buffer);
+    content = toContent(fileName, doc.mime, buffer);
   } catch {
     return { kind: 'ERROR', fileName, documentId, message: 'Could not read the stored file.' };
   }

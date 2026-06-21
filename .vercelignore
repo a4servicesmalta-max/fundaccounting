@@ -1,0 +1,12 @@
+node_modules
+.git
+.vercel
+.claude
+data
+qa
+scripts
+public_legacy
+*.log
+*.tmp
+.env
+.env.*

@@ -28,3 +28,5 @@ data/
 *.log
 *.tmp
 scripts/import-2022.log
+
+.vercel

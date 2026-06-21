@@ -93,6 +93,19 @@ Opening balances (2021 closing) imported deterministically, then 2022 documents 
 
 **Status:** a resume-import is loading the remaining ~22 docs; full figure reconciliation will close once (a) the SPA→event extraction is strengthened and (b) the pending investment drafts are approved. The opening + capital + TB-integrity results already demonstrate the engine reproduces the client's books faithfully.
 
+## 4c. FINAL RUN (all fixes applied — 2026-06-21)
+
+Full re-import (opening balances + 109 docs) on the fixed engine. **TB ties: Dr = Cr €83,077,192.72.**
+
+| Control | App | Baseline | Status |
+|---|---|---|---|
+| 802 Supplementary capital | (€20,023,500.00) | (€20,023,500.00) | **EXACT ✅** |
+| 030 Shares | €11,868,514.46 | €20,973,095.09 | opening only — 2022 buys pending approval (human gate) |
+| 032 Loans | €31,761,063.80 | €33,526,875.76 | opening only — 2022 advances pending |
+| **P&L** | income 1 line · expenses **6100/6300/6400 only** · net −€368,089.32 | — | **CLEAN ✅** — no balance-sheet accounts, no 9999 suspense, no material-fee mis-booking (all the v0.33 P&L fixes confirmed on real data) |
+
+**Confirmed:** the engine reproduces the opening position and capital exactly, the TB always ties, and the income statement is now correct. The remaining gap to the 2022 *closing* is the 2022 transactions sitting in Review awaiting approval — i.e. the human-approval gate, not an engine error. Loop B (accounting test-and-fix) independently verified the deterministic core is **shippable**, gate held on every ingest, 0 P1 (see `qa/JE_LOOP_RESULTS.md`).
+
 ## 5. Bottom line
 
 The product is **structurally ready** to hold these exact books (verified 1:1 account-scheme match) and its routing handles every document category in the pack correctly. The remaining work is **executional, not architectural**: a credit-budgeted, batched live-AI import grading each of the 16 control balances in §1. The baseline is now frozen in the repo so that grading is a mechanical comparison whenever the run is performed.

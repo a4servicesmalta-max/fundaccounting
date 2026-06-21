@@ -490,11 +490,17 @@ app.get('/api/overview', (_req: Request, res: Response) => {
     const portfolioFairValue = r2(equityValuation + loansValue);
     const nav = portfolioFairValue;
 
-    // Cash in EUR: net balance of bank/cash asset accounts from posted lines.
+    // Cash in EUR: net balance of bank/cash asset accounts across the WHOLE general
+    // ledger — opening balances + posted drafts + bank-statement movements + AR/AP
+    // settlements. Using only listPostedLines() here missed every bank deposit and
+    // withdrawal (those GL lines are synthesized by the report layer, not stored as
+    // draft lines), so dashboard cash never moved with the statements. The cash-code
+    // match is anchored to actual cash/bank accounts (no longer the stray 20x range,
+    // which is the liabilities band).
     const cashEur =
       Math.round(
-        listPostedLines()
-          .filter((l) => /^(1010|1011|20\d|10[0-9]?0)$/.test(l.accountCode) || /bank|cash/i.test(l.accountName || ''))
+        ledger('all').lines
+          .filter((l) => /^(1010|1011|101|130|10[0-9]?0)$/.test(l.accountCode) || /bank|cash/i.test(l.accountName || ''))
           .reduce((s, l) => s + (l.amount || 0), 0) * 100,
       ) / 100;
 
@@ -519,8 +525,14 @@ app.get('/api/overview', (_req: Request, res: Response) => {
         revalued: r.revaluedValue != null ? Math.round(r.revaluedValue * 100) / 100 : null,
       }));
 
-    // Allocation: each position as a % of NAV.
-    const allocation = holdings.map((h) => ({ name: h.name, value: h.value, pct: nav ? Math.round((h.value / nav) * 1000) / 10 : 0 }));
+    // Allocation: each position as a % of NAV. The NAV denominator carries equity at
+    // valuation (revalued) and loans at carrying, so the numerator must use the same
+    // basis (revalued-or-carrying) — otherwise percentages computed on cost over a
+    // fair-value NAV wouldn't sum to ~100 once anything is revalued.
+    const allocation = holdings.map((h) => {
+      const v = h.revalued != null ? h.revalued : h.value;
+      return { name: h.name, value: v, pct: nav ? Math.round((v / nav) * 1000) / 10 : 0 };
+    });
 
     // Recent documents: latest drafts, newest first.
     const recentDocuments = [...listDrafts()]

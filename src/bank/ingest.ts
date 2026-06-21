@@ -199,7 +199,17 @@ export function ingestStatement(extracted: ExtractedBankStatement): IngestResult
   // Trap T13: match charge↔reversal/refund pairs on this account and book both
   // legs to the SAME account so they net to zero (no double-count in P&L).
   const acctTxns = (db.bankTransactions as BankTransaction[]).filter(
-    (x) => x.bankAccountId === account.id && x.status !== 'REJECTED' && !x.dateFlag,
+    (x) =>
+      x.bankAccountId === account.id &&
+      x.status !== 'REJECTED' &&
+      !x.dateFlag &&
+      // Don't re-pair lines that already have a definitive treatment: an AR/AP
+      // settlement (matchedDocumentId), an investment cash leg (NH-0), or a
+      // net-zero pair from an earlier import. Re-pairing them would clobber the
+      // control posting and is non-idempotent across re-ingest.
+      !x.matchedDocumentId &&
+      !x.matchedInvestmentDraftId &&
+      !x.netZeroPair,
   );
   const pairs = findNetZeroPairs(
     acctTxns.map((x) => ({ id: x.id, date: x.date, amount: x.amount, description: x.description })),

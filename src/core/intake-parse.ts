@@ -33,13 +33,47 @@ const EVENT_ALIASES: Record<string, string> = {
   FX_REVAL: 'FX_REVAL', WRITE_OFF: 'WRITE_OFF', IMPAIRMENT: 'WRITE_OFF',
 };
 
+// Parse a numeric amount that may arrive as a continental- or anglo-formatted
+// string. The naive `Number(strip-non-digits)` corrupted EU formats: "1.234,56"
+// → 1.234 and "1.234.567,00" → NaN. Here the decimal separator is inferred — when
+// both '.' and ',' appear, the RIGHT-MOST one is the decimal point; a lone comma
+// with a 3-digit tail is a thousands group ("1,234" = 1234) while "12,50" is
+// decimal; multiple dots are thousands. Grouping separators are then removed.
 function toNum(v: unknown): number | undefined {
   if (typeof v === 'number') return isFinite(v) ? v : undefined;
-  if (typeof v === 'string') {
-    const n = Number(v.replace(/[^0-9.\-]/g, ''));
-    return isFinite(n) ? n : undefined;
+  if (typeof v !== 'string') return undefined;
+  let s = v.replace(/[^0-9.,\-]/g, '');
+  if (!s) return undefined;
+  const neg = s.startsWith('-');
+  s = s.replace(/-/g, '');
+  if (!s) return undefined;
+
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  let decSep = '';
+  if (lastComma >= 0 && lastDot >= 0) {
+    decSep = lastComma > lastDot ? ',' : '.'; // right-most separator is the decimal
+  } else if (lastComma >= 0) {
+    const commas = (s.match(/,/g) || []).length;
+    const tail = s.length - lastComma - 1;
+    if (commas === 1 && tail !== 3) decSep = ','; // "12,50" decimal; "1,234" thousands
+  } else if (lastDot >= 0) {
+    const dots = (s.match(/\./g) || []).length;
+    if (dots === 1) decSep = '.'; // single dot = canonical decimal; multiple = thousands
   }
-  return undefined;
+
+  let combined: string;
+  if (decSep) {
+    const idx = s.lastIndexOf(decSep);
+    const intPart = s.slice(0, idx).replace(/[.,]/g, '');
+    const fracPart = s.slice(idx + 1).replace(/[.,]/g, '');
+    combined = `${intPart}.${fracPart}`;
+  } else {
+    combined = s.replace(/[.,]/g, '');
+  }
+  const n = Number(combined);
+  if (!isFinite(n)) return undefined;
+  return neg ? -n : n;
 }
 function firstNum(...vs: unknown[]): number | undefined {
   for (const v of vs) { const n = toNum(v); if (n !== undefined) return n; }

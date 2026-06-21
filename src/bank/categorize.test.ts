@@ -21,6 +21,15 @@ test('interest -> 6400', () => {
   assert.ok(r.confidence >= 0.75);
 });
 
+test('interest is interest even when the word "charged" appears (not a bank charge)', () => {
+  // Regression: "Interest charged" contains the substring "charge", which used
+  // to route it to 6300 (Bank charges). Interest is interest expense (6400).
+  assert.equal(categorizeTransaction({ description: 'Interest charged', amount: -120 }).code, '6400');
+  assert.equal(categorizeTransaction({ description: 'Overdraft interest charged this month', amount: -45 }).code, '6400');
+  // A genuine bank charge with no interest word still routes to 6300.
+  assert.equal(categorizeTransaction({ description: 'Account service charge', amount: -10 }).code, '6300');
+});
+
 test('rent -> 6000', () => {
   assert.equal(categorizeTransaction({ description: 'Office RENT March', amount: -2000 }).code, '6000');
 });

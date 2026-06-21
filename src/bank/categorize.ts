@@ -48,6 +48,20 @@ const RULES: Rule[] = [
   // 6100 (legal/professional) is checked before the generic fee rule so that
   // "audit fee", "legal fees" etc. land on professional fees, not bank charges.
   { code: '6100', confidence: 0.8, keywords: ['legal', 'notary', 'law', 'audit', 'accounting', 'accountant'] },
+  // 6400 (interest) is checked BEFORE the generic fee/charge rule: "interest
+  // charged" / "interest charge" contains the substring "charge" and would
+  // otherwise be mis-booked as a bank charge (6300). Interest is interest
+  // expense, not a bank charge — both are P&L, but the classification matters.
+  {
+    code: '6400',
+    confidence: 0.85,
+    keywords: [
+      // EN
+      'interest',
+      // PL: odsetki; DE: Zinsen; FR: intérêts
+      'odsetki', 'zinsen', 'interets',
+    ],
+  },
   {
     code: '6300',
     confidence: 0.9,
@@ -63,16 +77,6 @@ const RULES: Rule[] = [
       'oplata', 'prowizja',
       // DE: Gebühr; FR: frais
       'gebuhr', 'frais',
-    ],
-  },
-  {
-    code: '6400',
-    confidence: 0.85,
-    keywords: [
-      // EN
-      'interest',
-      // PL: odsetki; DE: Zinsen; FR: intérêts
-      'odsetki', 'zinsen', 'interets',
     ],
   },
   {

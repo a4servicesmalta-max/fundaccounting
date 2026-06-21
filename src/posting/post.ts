@@ -13,6 +13,7 @@ import {
   getSettings,
   type DraftRecord,
 } from '../db/store';
+import { rematchInvestments } from '../bank/investment-settle';
 
 /** Throw if the draft's period is closed (locked). */
 function assertPeriodOpen(period: string | null | undefined, what: string): void {
@@ -38,6 +39,9 @@ export function approveDraft(id: string, actor = 'system'): DraftRecord | null {
     summary: `Posted ${draft.eventType} for ${draft.investeeName} (${draft.controlCode})`,
     after: { status: 'POSTED', postedAt: now },
   });
+  // NH-0: now that the investment's Dr 030/032 + Cr 1010 are live, exclude any
+  // bank-statement line that is the same cash movement, so it isn't counted twice.
+  rematchInvestments();
   return getDraft(id);
 }
 
@@ -71,6 +75,7 @@ export function approveAll(actor = 'system'): { approved: number; skipped: numbe
       summary: `Bulk-approved ${approved} draft(s); ${skipped} held for review`,
       after: { approved, skipped },
     });
+    rematchInvestments(); // NH-0: exclude bank cash legs of the just-posted investments
   }
   return { approved, skipped };
 }

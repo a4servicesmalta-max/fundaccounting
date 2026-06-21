@@ -56,6 +56,12 @@ export interface BankTransaction {
   // pair, both legs carry the same id and post to the same account so they cancel
   // (no double-count in P&L). 'CHARGE' is the original, 'REFUND' the reversal.
   netZeroPair?: { id: string; role: 'CHARGE' | 'REFUND'; counterpartyTxnId: string } | null;
+  // NH-0: when this bank line is the cash leg of a posted investment entry
+  // (share buy/sale, loan advance/repayment, distribution), it is matched to that
+  // draft and EXCLUDED from the GL — the investment entry already books both Dr
+  // 030/032 and Cr/Dr 1010, so letting the bank line post too would double-count
+  // the cash and the asset.
+  matchedInvestmentDraftId?: string | null;
 }
 
 // --- Accounts ---------------------------------------------------------------

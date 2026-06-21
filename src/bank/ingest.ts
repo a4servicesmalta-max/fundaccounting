@@ -25,6 +25,7 @@ import {
 import { categorizeTransaction } from './categorize';
 import { matchTransaction } from './match';
 import { applySettlement } from './settle';
+import { rematchInvestments } from './investment-settle';
 import { checkDate } from '../core/date-validate';
 import { findNetZeroPairs } from './net-zero';
 
@@ -222,6 +223,11 @@ export function ingestStatement(extracted: ExtractedBankStatement): IngestResult
   }
 
   persist();
+
+  // NH-0: a statement line may be the cash leg of an investment already posted
+  // (e.g. shares bought last month, the bank statement filed now). Match + exclude
+  // it from the GL so the investment entry's Cr 1010 stays the single cash record.
+  rematchInvestments();
 
   return {
     bankAccountId: account.id,

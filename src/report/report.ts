@@ -76,6 +76,7 @@ function bankLedgerLines(): PostedLineRow[] {
   for (const t of listTransactions()) {
     if (t.status === 'REJECTED') continue;
     if (t.dateFlag) continue; // trap T2: held for review until the impossible date is fixed
+    if (t.matchedInvestmentDraftId) continue; // NH-0: cash leg already booked by the investment entry
     const ccy = (accCcy.get(t.bankAccountId) as string) || 'EUR';
     const desc = t.description || 'Bank transaction';
     // A split line posts the bank movement against several accounts; the bank

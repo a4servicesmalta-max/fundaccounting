@@ -38,3 +38,21 @@ test('the partial-disposal share-purchase example parses to the full figure', ()
   // A bilingual SPA might state the total as "2.500.000,00".
   assert.equal(amountOf('2.500.000,00'), 2500000);
 });
+
+test('the headline figure is captured under the model’s own field names', () => {
+  // The model names the amount differently per deal type; all must be picked up so
+  // the figure is never silently lost (a loan booked €0 under principalAmount).
+  const cases: [Record<string, unknown>, number][] = [
+    [{ kind: 'EVENT', eventType: 'LOAN_ADVANCE', investee: 'Beta Bioscience Ltd', principalAmount: '500000.00' }, 500000],
+    [{ kind: 'EVENT', eventType: 'LOAN_ADVANCE', investee: 'X', loanPrincipal: 250000 }, 250000],
+    [{ kind: 'EVENT', eventType: 'ACQUISITION', investee: 'Y', purchasePrice: '1.234.567,00' }, 1234567],
+    [{ kind: 'EVENT', eventType: 'DISPOSAL', investee: 'Z', disposalProceeds: 90000 }, 90000],
+    // The model also nests the figure under a container (observed live):
+    [{ kind: 'EVENT', eventType: 'LOAN_ADVANCE', investee: 'Beta', amounts: { principal: '500000.00' } }, 500000],
+    [{ kind: 'EVENT', eventType: 'ACQUISITION', investee: 'Q', figures: { totalPrice: 75000 } }, 75000],
+  ];
+  for (const [raw, expected] of cases) {
+    const o = normalizeIntakeObject(raw) as { sourceFigures?: { amount?: unknown } };
+    assert.equal(o.sourceFigures?.amount, expected, `mapped ${JSON.stringify(raw)}`);
+  }
+});

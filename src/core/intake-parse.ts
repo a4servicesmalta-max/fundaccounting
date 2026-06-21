@@ -79,6 +79,28 @@ function firstNum(...vs: unknown[]): number | undefined {
   for (const v of vs) { const n = toNum(v); if (n !== undefined) return n; }
   return undefined;
 }
+
+// The model is inconsistent about WHERE it puts the headline figure: sometimes a
+// top-level field (amount/principalAmount/purchasePrice…), sometimes nested under a
+// container ("amounts":{"principal":…}, "figures":{…}). Scan a list of candidate
+// containers for any of the known amount keys so the figure is never lost.
+const AMOUNT_KEYS = [
+  'amount', 'total', 'totalPrice', 'totalAmount', 'totalConsideration', 'consideration',
+  'proceeds', 'loanAmount', 'principal', 'principalAmount', 'loanPrincipal', 'nominalAmount',
+  'faceValue', 'purchasePrice', 'salePrice', 'disposalProceeds', 'subscriptionAmount',
+  'grossAmount', 'netAmount', 'value',
+];
+function pickNum(containers: unknown[], keys: string[]): number | undefined {
+  for (const c of containers) {
+    if (!c || typeof c !== 'object') continue;
+    const rec = c as Record<string, unknown>;
+    for (const k of keys) {
+      const n = toNum(rec[k]);
+      if (n !== undefined) return n;
+    }
+  }
+  return undefined;
+}
 function firstStr(...vs: unknown[]): string | undefined {
   for (const v of vs) if (typeof v === 'string' && v.trim()) return v.trim();
   return undefined;
@@ -135,7 +157,12 @@ export function normalizeIntakeObject(raw: unknown): unknown {
   const perShare = firstNum(o.pricePerShare, o.pricePerShare, o.unitPrice, o.sharePrice, o.price);
   // Prefer an explicit total; otherwise derive it from quantity × price-per-share
   // (agreements often state shares + unit price but no total line).
-  let amount = firstNum(sf.amount, o.totalPrice, o.totalAmount, o.amount, o.totalConsideration, o.consideration, o.proceeds, o.loanAmount, o.principal, o.value);
+  // sourceFigures.amount wins; then top-level fields; then nested containers the
+  // model sometimes uses ("amounts"/"figures"/"financials"/"details"/"terms").
+  let amount = pickNum(
+    [sf, o, o.amounts, o.figures, o.financials, o.details, o.terms],
+    AMOUNT_KEYS,
+  );
   if (amount === undefined && quantity !== undefined && perShare !== undefined) {
     amount = Math.round(quantity * perShare * 100) / 100;
   }

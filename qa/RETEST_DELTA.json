@@ -1,0 +1,33 @@
+{
+  "generated": "2026-06-21",
+  "oracle": "THCP_Test_Pack/ANSWER_KEY.json",
+  "oracle_frozen": true,
+  "canonical_policy": "IFRS9_FVTPL",
+  "phase0_ak_corrections": {
+    "AK-1": { "status": "applied", "decision": "option_b_reconciling_item", "entry": "RECON-PKO-ADDL", "amount_eur": 542147.86 },
+    "AK-2": { "status": "applied", "decision": "fvtpl_fair_value_remeasurement", "entry": "FV-REMEAS", "amount_eur": -128074.06, "alternate_fixtures": ["ALT-IMP-RMA", "ALT-IMP-NA"] },
+    "AK-3": { "status": "applied", "decision": "deterministic_derivation_value_deferred", "entry": "FX-CLOSE", "value": null },
+    "AK-4": { "status": "applied", "decision": "equivalent_if_note_on_disposals", "entries": ["DISP-WC", "DISP-GC", "DISP-JS"] }
+  },
+  "traps": {
+    "T1":  { "verdict_before": "missed", "verdict_current": "caught",  "evidence": "dedup 4->3, duplicate surfaced in Documents (v0.14/v0.18)" },
+    "T2":  { "verdict_before": "missed", "verdict_current": "caught",  "evidence": "checkDate() detects impossible dates; ingest flags 2021-09-31 (suggest 2021-09-30), holds line out of ledger + period unset until fixed; Fix-date route+UI. Tests: src/core/date-validate.test.ts + ingest T2 cases" },
+    "T3":  { "verdict_before": "missed", "verdict_current": "caught",  "evidence": "'738,00'->PLN 738 -> payable (v0.18)" },
+    "T4":  { "verdict_before": "missed", "verdict_current": "partial", "evidence": "601 brokerage account exists; gross-up wiring is Point 1" },
+    "T5":  { "verdict_before": "missed", "verdict_current": "caught",  "evidence": "split 40,000/1,500; P&L 510=1,500; TB ties (v0.20)" },
+    "T6":  { "verdict_before": "missed", "verdict_current": "caught",  "evidence": "settlement-date ECB FX; rate/date shown (v0.18)" },
+    "T7":  { "verdict_before": "missed", "verdict_current": "caught",  "evidence": "composeFairValueRemeasurement() books movement=fairValue-carrying to 030-x vs 710 P&L (balanced, both signs); reviewer supplies fair value (engine never invents); FV_REMEAS draft via /api/investments/:code/revalue; portfolio Revalue button; excluded from cost base. Tests: fair-value.test.ts (AK-2 -128074.06 verified)" },
+    "T8":  { "verdict_before": "missed", "verdict_current": "caught",  "evidence": "tax-flags.ts FLAGS (never computes): share disposal->participation-exemption + VAT-exempt; dividend->participation-exemption; foreign service payable (maklerski/legal/advisory)->reverse-charge. Enriched on /api/drafts + /api/aging/items; review-card + aging badges. Tests: tax-flags.test.ts (10)" },
+    "T9":  { "verdict_before": "missed", "verdict_current": "caught",  "evidence": "content routing -> Review, not bank feed (v0.18)" },
+    "T10": { "verdict_before": "missed", "verdict_current": "caught",  "evidence": "reconcileAccount() ties statement closing to posted GL balance; held(bad-date)+rejected lines surfaced as reconciling items that explain the difference; suspense lines flagged informationally. /api/bank/reconcile + UI panel. Tests: reconcile.test.ts" },
+    "T11": { "verdict_before": "missed", "verdict_current": "caught",  "evidence": "per-investee 030 vs 032 control sub-accounts never net; full-load proof at Point 6" },
+    "T12": { "verdict_before": "missed", "verdict_current": "partial", "evidence": "line-level round2 in place; 8-line tie proof at Point 6" },
+    "T13": { "verdict_before": "missed", "verdict_current": "caught",  "evidence": "findNetZeroPairs() matches charge<->reversal (PCC -2730/+2730, refund/tax/zwrot keyword, opposite equal amount, <=31d); ingest books both legs to the same account so they net to zero in P&L; UI badge. Tests: net-zero.test.ts + ingest T13" }
+  },
+  "tally": { "caught": 11, "partial": 2, "pending": 0, "target": 13 },
+  "gaps": {
+    "POINT2-TRUST": { "status": "closed", "evidence": "hash-chained audit trail + period locks + draft edit + reversal + doc-entry links; 9 tests src/posting/trust.test.ts", "commit": "local" },
+    "POINT4-REVAL": { "status": "closed", "evidence": "portfolio month-close revaluation columns + FS report w/ logo cover + approve-all guard", "commit": "local" }
+  },
+  "note": "Full re-grade (re-seed seed_fixtures.json, re-ingest source_pdfs + banks/*.csv, grade every entry) runs at Point 6; verdicts then finalise to 'after'."
+}

@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Secrets
+.env
+
+# Local data (your books live here — keep it on your machine)
+data/autopilot.json
+
+# Build output
+dist/
+
+# Vercel
+.vercel/
+
+# Local uploads (originals live on disk under the file driver)
+data/uploads/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+data/.test-autopilot.json
+
+# Hardening: never commit ANY secret variant or runtime/client data
+.env.*
+!.env.example
+data/
+*.log
+*.tmp
+scripts/import-2022.log

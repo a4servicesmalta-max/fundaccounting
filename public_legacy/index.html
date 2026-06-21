@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fund Autopilot</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📘</text></svg>" />
+</head>
+<body>
+  <!-- ============ HEADER ============ -->
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+          </svg>
+        </span>
+        <div class="brand-text">
+          <h1>Fund Autopilot</h1>
+          <p class="tagline">Upload your fund's documents and we'll do the bookkeeping for you — you just review and approve.</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span id="statusPill" class="pill pill-neutral" title="Checking the AI connection…">
+          <span class="pill-dot"></span><span id="statusPillText">Checking…</span>
+        </span>
+        <button id="startOverBtn" class="btn btn-ghost btn-sm" title="Wipe everything and begin again">Start over</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ TOP-LEVEL SECTION NAV ============ -->
+  <nav class="section-nav" aria-label="Sections">
+    <div class="wrap section-nav-inner">
+      <button class="snav is-active" data-view="investments" type="button">Investments</button>
+      <button class="snav" data-view="bank" type="button">Bank</button>
+      <button class="snav" data-view="arap" type="button">Debtors &amp; Creditors</button>
+      <button class="snav" data-view="loans" type="button">Loans</button>
+    </div>
+  </nav>
+
+  <!-- ============ PERIOD TOOLBAR (Investments only) ============ -->
+  <div class="period-bar">
+    <div class="wrap period-bar-inner">
+      <div class="period-status">
+        <span class="period-cal" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+        </span>
+        <span class="period-label">Working month:</span>
+        <strong id="workingMonth" class="period-value">All months</strong>
+      </div>
+      <div class="period-controls">
+        <label class="period-filter">
+          <span class="period-filter-label">Show</span>
+          <select id="periodFilter" aria-label="Filter your books by month">
+            <option value="all">All months</option>
+          </select>
+        </label>
+        <button id="startMonthBtn" class="btn btn-secondary btn-sm" type="button">Start new month</button>
+      </div>
+    </div>
+    <!-- inline month picker, hidden until "Start new month" -->
+    <div id="monthPicker" class="month-picker" hidden>
+      <div class="wrap month-picker-inner">
+        <label for="monthPickerInput" class="month-picker-label">Pick the month to start:</label>
+        <input type="month" id="monthPickerInput" class="month-input" />
+        <button id="confirmMonthBtn" class="btn btn-primary btn-sm" type="button">Start this month</button>
+        <button id="cancelMonthBtn" class="btn btn-ghost btn-sm" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="wrap">
+    <!-- A friendly hint shown when the AI key is missing -->
+    <div id="keyHint" class="banner banner-warn" hidden>
+      <strong>The AI isn't connected yet.</strong>
+      <span>Open the <code>.env</code> file in the project folder and add your line <code>ANTHROPIC_API_KEY=…</code>, then restart the app. Until then, documents can't be read.</span>
+    </div>
+
+    <!-- ====================================================== -->
+    <!-- VIEW: INVESTMENTS (the original flow — default)        -->
+    <!-- ====================================================== -->
+    <div id="view-investments" class="view">
+
+    <!-- ============ 1. UPLOAD ============ -->
+    <section class="card" id="uploadSection">
+      <h2 class="section-title">1. Add your documents</h2>
+      <p class="section-help">Bank statements, share purchase or sale agreements, loan papers, dividend resolutions, invoices — drop them all in. We'll read each one for you.</p>
+
+      <div id="dropZone" class="dropzone" tabindex="0" role="button" aria-label="Drop your documents here, or click to choose">
+        <svg class="dz-icon" viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <p class="dz-title">Drop your documents here, or click to choose</p>
+        <p class="dz-sub">PDF, images, CSV, Excel and .zip files all welcome. You can drop many at once.</p>
+        <div class="dz-buttons">
+          <button type="button" class="btn btn-primary" id="chooseFilesBtn">Choose files</button>
+          <button type="button" class="btn btn-secondary" id="chooseFolderBtn">Choose a folder</button>
+        </div>
+      </div>
+
+      <!-- hidden inputs: one for files, one for a whole folder -->
+      <input type="file" id="fileInput" multiple hidden />
+      <input type="file" id="folderInput" multiple webkitdirectory hidden />
+
+      <div id="uploadProgress" class="upload-progress" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <span id="uploadProgressText">Reading your documents…</span>
+      </div>
+
+      <div id="uploadResult" class="upload-result" hidden></div>
+      <div id="uploadError" class="banner banner-error" hidden></div>
+    </section>
+
+    <!-- ============ 2. REVIEW & APPROVE ============ -->
+    <section class="card" id="reviewSection">
+      <div class="section-head-row">
+        <div>
+          <h2 class="section-title">2. Review &amp; approve</h2>
+          <p class="section-help">For each one, see what the document said and what we booked. Approve when it looks right.</p>
+        </div>
+        <button id="approveAllBtn" class="btn btn-primary" hidden>Approve all</button>
+      </div>
+
+      <div id="reviewList" class="review-list"></div>
+
+      <div id="reviewEmpty" class="empty-state">
+        <p>Nothing to review yet. Once you add documents above, anything that looks like a transaction will appear here for your approval.</p>
+      </div>
+    </section>
+
+    <!-- ============ 3. BOOKS & REPORTS ============ -->
+    <section class="card" id="reportsSection">
+      <h2 class="section-title">3. Your books &amp; reports</h2>
+      <p class="section-help">Everything you've approved, totted up. Download any of these as a spreadsheet whenever you like.</p>
+
+      <div class="tabs" role="tablist">
+        <button class="tab is-active" data-tab="portfolio" role="tab">Portfolio</button>
+        <button class="tab" data-tab="ledger" role="tab">Ledger</button>
+        <button class="tab" data-tab="trial-balance" role="tab">Trial balance</button>
+      </div>
+
+      <div class="tab-toolbar">
+        <span id="tabHint" class="tab-hint">A snapshot of what each holding is worth in your books.</span>
+        <a id="downloadCsvBtn" class="btn btn-secondary btn-sm" href="/api/export/portfolio" download>Download CSV</a>
+      </div>
+
+      <div id="reportBody" class="report-body">
+        <div class="empty-state"><p>No approved entries yet. Approve a transaction above and it will show up here.</p></div>
+      </div>
+    </section>
+
+    </div><!-- /view-investments -->
+
+    <!-- ====================================================== -->
+    <!-- VIEW: BANK                                             -->
+    <!-- ====================================================== -->
+    <div id="view-bank" class="view" hidden>
+
+      <!-- Bank upload -->
+      <section class="card">
+        <h2 class="section-title">Add bank statements</h2>
+        <p class="section-help">Drop in your bank statements (PDF or CSV). We'll read each one, add any new months, check the balances tie, and suggest where every line should go.</p>
+
+        <div id="bankDropZone" class="dropzone" tabindex="0" role="button" aria-label="Drop your bank statements here, or click to choose">
+          <svg class="dz-icon" viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <p class="dz-title">Drop your bank statements here, or click to choose</p>
+          <p class="dz-sub">PDF and CSV welcome. Drop several at once — overlapping months are skipped automatically.</p>
+          <div class="dz-buttons">
+            <button type="button" class="btn btn-primary" id="bankChooseBtn">Choose statements</button>
+          </div>
+        </div>
+        <input type="file" id="bankFileInput" multiple hidden accept=".pdf,.csv,application/pdf,text/csv" />
+
+        <div id="bankUploadProgress" class="upload-progress" hidden>
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="bankUploadProgressText">Reading your statements…</span>
+        </div>
+        <div id="bankUploadResult" class="upload-result" hidden></div>
+        <div id="bankUploadError" class="banner banner-error" hidden></div>
+      </section>
+
+      <!-- Bank accounts + transactions -->
+      <section class="card">
+        <div class="section-head-row">
+          <div>
+            <h2 class="section-title">Bank accounts</h2>
+            <p class="section-help">Pick an account to see its statements and every transaction we read.</p>
+          </div>
+          <label class="account-picker" hidden id="bankAccountPickerWrap">
+            <span class="account-picker-label">Account</span>
+            <select id="bankAccountPicker" aria-label="Choose a bank account"></select>
+          </label>
+        </div>
+
+        <div id="bankStatements" class="bank-statements"></div>
+        <div id="bankBody" class="report-body"></div>
+
+        <div id="bankEmpty" class="empty-state">
+          <p>No bank statements yet — upload one above.</p>
+        </div>
+      </section>
+
+    </div><!-- /view-bank -->
+
+    <!-- ====================================================== -->
+    <!-- VIEW: DEBTORS & CREDITORS                              -->
+    <!-- ====================================================== -->
+    <div id="view-arap" class="view" hidden>
+
+      <!-- Invoice / bill upload -->
+      <section class="card">
+        <h2 class="section-title">Add invoices &amp; bills</h2>
+        <p class="section-help">Drop in invoices you've issued (money owed to the fund) and bills you've received (money the fund owes). We'll sort them into debtors and creditors for you.</p>
+
+        <div id="arapDropZone" class="dropzone" tabindex="0" role="button" aria-label="Drop your invoices and bills here, or click to choose">
+          <svg class="dz-icon" viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <p class="dz-title">Drop your invoices and bills here, or click to choose</p>
+          <p class="dz-sub">PDF, images, CSV and Excel all welcome. Drop several at once.</p>
+          <div class="dz-buttons">
+            <button type="button" class="btn btn-primary" id="arapChooseBtn">Choose files</button>
+          </div>
+        </div>
+        <input type="file" id="arapFileInput" multiple hidden />
+
+        <div id="arapUploadProgress" class="upload-progress" hidden>
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="arapUploadProgressText">Reading your invoices…</span>
+        </div>
+        <div id="arapUploadResult" class="upload-result" hidden></div>
+        <div id="arapUploadError" class="banner banner-error" hidden></div>
+      </section>
+
+      <!-- Aging -->
+      <section class="card">
+        <div class="section-head-row">
+          <div>
+            <h2 class="section-title">Who owes what, and how overdue</h2>
+            <p class="section-help">Amounts still outstanding, grouped by how long they've been due.</p>
+          </div>
+          <label class="account-picker">
+            <span class="account-picker-label">As at</span>
+            <input type="date" id="agingAsOf" class="month-input" aria-label="Aging as-at date" />
+          </label>
+        </div>
+
+        <div id="agingBody" class="report-body"></div>
+        <div id="agingEmpty" class="empty-state">
+          <p>No invoices or bills yet — upload one above.</p>
+        </div>
+      </section>
+
+    </div><!-- /view-arap -->
+
+    <!-- ====================================================== -->
+    <!-- VIEW: LOANS                                            -->
+    <!-- ====================================================== -->
+    <div id="view-loans" class="view" hidden>
+      <section class="card">
+        <div class="section-head-row">
+          <div>
+            <h2 class="section-title">Loans</h2>
+            <p class="section-help">Every loan by party — what was advanced, what's been repaid, and what's still outstanding. Click a row to see the full history.</p>
+          </div>
+          <button id="loansRefreshBtn" class="btn btn-secondary btn-sm" type="button">Refresh</button>
+        </div>
+
+        <div id="loansBody" class="report-body"></div>
+        <div id="loansEmpty" class="empty-state">
+          <p>No loans yet. Once you approve a loan advance or post a bank line to a loan account, it will appear here.</p>
+        </div>
+      </section>
+    </div><!-- /view-loans -->
+
+  </main>
+
+  <footer class="site-footer wrap">
+    <p>Fund Autopilot reads your documents with AI, then a fixed engine does every calculation. You always have the final say.</p>
+  </footer>
+
+  <!-- A tiny toast for confirmations -->
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

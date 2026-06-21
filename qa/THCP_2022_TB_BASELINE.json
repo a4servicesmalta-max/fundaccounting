@@ -1,0 +1,173 @@
+{
+  "source": "THCP MT 'acc. books_2022_TB XII.xlsx / sheet TB-12.2022",
+  "period": "2022-12",
+  "controls": [
+    {
+      "account": "030",
+      "description": "Shares",
+      "closingDr": 20973095.09,
+      "closingCr": null
+    },
+    {
+      "account": "032",
+      "description": "Loans granted",
+      "closingDr": 33526875.76,
+      "closingCr": 0.0
+    },
+    {
+      "account": "032-1",
+      "description": "Interests",
+      "closingDr": 1482549.39,
+      "closingCr": null
+    },
+    {
+      "account": "240",
+      "description": "Other receivables",
+      "closingDr": 0.0,
+      "closingCr": null
+    },
+    {
+      "account": "240-OD",
+      "description": "Other receivables - general",
+      "closingDr": 552641.25,
+      "closingCr": null
+    },
+    {
+      "account": "240-GCM",
+      "description": "Receivables - Gamivo.com Limited (Man)",
+      "closingDr": 35154.87,
+      "closingCr": null
+    },
+    {
+      "account": "240-JPL1",
+      "description": "Receivables - Jupi Park Lodz1 sp. z o.o.",
+      "closingDr": 191000.0,
+      "closingCr": null
+    },
+    {
+      "account": "240-IP",
+      "description": "Interim dividend payment",
+      "closingDr": 16670763.87,
+      "closingCr": null
+    },
+    {
+      "account": "240-CL",
+      "description": "Receivables - Climax Investment Limited",
+      "closingDr": 448.14,
+      "closingCr": null
+    },
+    {
+      "account": "130",
+      "description": "Cash at bank",
+      "closingDr": 8830278.95,
+      "closingCr": null
+    },
+    {
+      "account": "140",
+      "description": "Funds in transfer",
+      "closingDr": 117.59,
+      "closingCr": null
+    },
+    {
+      "account": "101",
+      "description": "Cash (PLN)",
+      "closingDr": 124972.0,
+      "closingCr": null
+    },
+    {
+      "account": "801",
+      "description": "Share capital",
+      "closingDr": null,
+      "closingCr": 22896.41
+    },
+    {
+      "account": "802",
+      "description": "Supplemantary capital",
+      "closingDr": null,
+      "closingCr": 20023500.0
+    },
+    {
+      "account": "860",
+      "description": "Accounting Profit/Loss",
+      "closingDr": null,
+      "closingCr": 62208661.43
+    },
+    {
+      "account": "500",
+      "description": "Short-term liabilities",
+      "closingDr": null,
+      "closingCr": 116891.32
+    },
+    {
+      "account": "501",
+      "description": "Accruals",
+      "closingDr": null,
+      "closingCr": 15947.75
+    },
+    {
+      "account": "750-1",
+      "description": "Revenues from sales of shares",
+      "closingDr": null,
+      "closingCr": null
+    },
+    {
+      "account": "750-2",
+      "description": "Dividends",
+      "closingDr": null,
+      "closingCr": null
+    },
+    {
+      "account": "750-3",
+      "description": "Interests",
+      "closingDr": null,
+      "closingCr": null
+    },
+    {
+      "account": "EXCH-P",
+      "description": "Other financial PROFIT",
+      "closingDr": null,
+      "closingCr": null
+    },
+    {
+      "account": "751",
+      "description": "Cost of shares disposal",
+      "closingDr": null,
+      "closingCr": null
+    },
+    {
+      "account": "EXCH-L",
+      "description": "Other financial costs",
+      "closingDr": null,
+      "closingCr": null
+    },
+    {
+      "account": "402",
+      "description": "Legal&Professional fees",
+      "closingDr": null,
+      "closingCr": null
+    },
+    {
+      "account": "402-THCP",
+      "description": "Expenses Tar Heel Capital Pathfinder sp. z o.o.",
+      "closingDr": null,
+      "closingCr": null
+    },
+    {
+      "account": "403",
+      "description": "Taxes",
+      "closingDr": null,
+      "closingCr": null
+    },
+    {
+      "account": "409",
+      "description": "Other costs",
+      "closingDr": null,
+      "closingCr": null
+    }
+  ],
+  "totals": {
+    "debit": 82387896.91,
+    "credit": 82387896.91,
+    "balanced": true
+  }
+}

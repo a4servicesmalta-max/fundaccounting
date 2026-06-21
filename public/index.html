@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fund Autopilot</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'&gt;&lt;text y='.9em' font-size='90'&gt;%F0%9F%93%98&lt;/text&gt;&lt;/svg&gt;" />
+</head>
+<body>
+  <div class="app">
+    <!-- ============ SIDEBAR ============ -->
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="assets/a4-logo.png" alt="A4" onerror="this.style.display='none'" />
+        <div>
+          <div class="brand-name">Fund Autopilot</div>
+          <div class="brand-sub">An A4 product</div>
+        </div>
+      </div>
+
+      <nav class="nav-group">
+        <div class="nav-group-label">Workspace</div>
+        <a class="nav-item" data-view="overview"><span class="ico" data-ico="overview"></span><span class="nav-label">Overview</span></a>
+        <a class="nav-item" data-view="documents"><span class="ico" data-ico="documents"></span><span class="nav-label">Documents</span></a>
+        <a class="nav-item" data-view="bank"><span class="ico" data-ico="bank"></span><span class="nav-label">Bank statements</span><span class="nav-badge warn" id="bankBadge"></span></a>
+        <a class="nav-item" data-view="review"><span class="ico" data-ico="review"></span><span class="nav-label">Review</span><span class="nav-badge lime" id="reviewBadge"></span></a>
+      </nav>
+
+      <nav class="nav-group">
+        <div class="nav-group-label">Ledgers</div>
+        <a class="nav-item" data-view="loans"><span class="ico" data-ico="loans"></span><span class="nav-label">Loans</span></a>
+        <a class="nav-item" data-view="aging"><span class="ico" data-ico="aging"></span><span class="nav-label">Aging</span></a>
+        <a class="nav-item" data-view="books"><span class="ico" data-ico="books"></span><span class="nav-label">Books &amp; reports</span></a>
+      </nav>
+
+      <nav class="nav-group">
+        <div class="nav-group-label">General</div>
+        <a class="nav-item" data-view="settings"><span class="ico" data-ico="settings"></span><span class="nav-label">Settings</span></a>
+        <a class="nav-item" data-view="help"><span class="ico" data-ico="help"></span><span class="nav-label">Help &amp; support</span></a>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="ai-status" id="aiStatus">
+          <span class="ai-dot off" id="aiDot"></span>
+          <div>
+            <div class="ai-status-title" id="aiStatusTitle">Checking AI…</div>
+            <div class="ai-status-sub" id="aiStatusSub">&nbsp;</div>
+          </div>
+        </div>
+        <a class="nav-item" id="startOverNav"><span class="ico" data-ico="logout"></span><span class="nav-label">Start over</span></a>
+      </div>
+    </aside>
+
+    <!-- ============ MAIN COLUMN ============ -->
+    <div class="colmain">
+      <header class="topbar">
+        <div class="greeting-wrap">
+          <div class="greeting" id="greeting">Welcome back</div>
+          <div class="greeting-sub">Here's where your fund stands today.</div>
+        </div>
+        <label class="search" title="Search is coming soon">
+          <span class="ico" data-ico="search"></span>
+          <input type="text" placeholder="Search documents, accounts…" aria-label="Search" />
+        </label>
+        <div class="topbar-actions">
+          <button class="icon-btn" id="bellBtn" title="Notifications">
+            <span class="ico" data-ico="bell"></span><span class="dot" id="bellDot"></span>
+          </button>
+          <div class="topbar-divider"></div>
+          <button class="userbtn" title="Your account">
+            <img src="assets/avery-avatar.png" alt="" onerror="this.outerHTML='&lt;span class=\'avatar violet\'&gt;FA&lt;/span&gt;'" />
+            <span class="uname">Your fund</span>
+            <span class="ico" data-ico="chevron"></span>
+          </button>
+        </div>
+      </header>
+
+      <main class="main">
+        <div id="keyHint" class="banner banner-warn" style="display:none">
+          <strong>The AI isn't connected yet.</strong>
+          Open the <code>.env</code> file in the project folder and add your line <code>ANTHROPIC_API_KEY=…</code>, then restart the app. Until then, documents can't be read.
+        </div>
+        <div id="view" class="view"></div>
+      </main>
+    </div>
+  </div>
+
+  <div id="toastWrap"></div>
+
+  <script src="app.js"></script>
+  <script src="views/overview.js"></script>
+  <script src="views/documents.js"></script>
+  <script src="views/review.js"></script>
+  <script src="views/bank.js"></script>
+  <script src="views/aging.js"></script>
+  <script src="views/loans.js"></script>
+  <script src="views/books.js"></script>
+  <script src="views/settings.js"></script>
+  <script>window.FA && window.FA.boot && window.FA.boot();</script>
+</body>
+</html>

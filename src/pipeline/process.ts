@@ -35,6 +35,7 @@ import { accountName } from '../core/chart';
 import { loadRates } from '../fx/rates';
 import { toContent } from './extract-content';
 import { carryingValueFor, disposalCarryingCost, unitsHeldFor } from '../report/positions';
+import { checkDate } from '../core/date-validate';
 
 
 /** Map a mime type to a file extension (fallback for files with no extension). */
@@ -485,6 +486,16 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
       }
     }
 
+    // 6b. Impossible event date (trap T2): an out-of-range day (e.g. 31 Feb) would
+    //     silently roll forward in new Date() and land in the wrong period. Flag it
+    //     and hold it for the reviewer rather than booking a wrong date.
+    const dchk = checkDate(intent.txnDate);
+    const dateImpossible = dchk.impossible;
+    if (dateImpossible) {
+      const dnote = `Impossible date "${intent.txnDate}" — ${dchk.reason}${dchk.suggestion ? ` Suggested: ${dchk.suggestion}.` : ''} Please correct before posting.`;
+      note = note ? `${note} ${dnote}` : dnote;
+    }
+
     // 7. Engine computes the balanced lines (no AI figures here). For a non-EUR
     //    event, inject the accurate ECB rate for the transaction date (same daily
     //    source the bank uses) so FX isn't pinned to the sparse bundled table.
@@ -519,7 +530,8 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
       sourceFigures: composition.sourceFigures,
       engineFigures: composition.engineFigures,
       lines: composition.engineLines,
-      confidence: intent.confidence,
+      // An impossible date forces per-line review (kept below the bulk-approve bar).
+      confidence: dateImpossible ? Math.min(intent.confidence ?? 0.6, 0.3) : intent.confidence,
       citation: intent.citation,
       rationale: note ? `${intent.rationale} (${note})` : intent.rationale,
       docName: fileName,

@@ -30,3 +30,4 @@ data/
 scripts/import-2022.log
 
 .vercel
+test-runs/

@@ -31,6 +31,11 @@
       mount.appendChild(monthCard);
       await renderMonth(el, monthCard, FA);
 
+      // ---- Accounting setup card (opening date + reporting entity) -------
+      const setupCard = el('div', { class: 'card card-pad' });
+      mount.appendChild(setupCard);
+      await renderAccountingSetup(el, setupCard, FA);
+
       // ---- Your data card -------------------------------------------------
       const dataCard = el('div', { class: 'card card-pad' });
       mount.appendChild(dataCard);
@@ -136,6 +141,65 @@
     }, input, startBtn));
     card.appendChild(el('p', { class: 'section-help', style: { marginTop: '10px' } },
       'Starting a new month makes it your working month and the figures you see across the app.'));
+  }
+
+  async function renderAccountingSetup(el, card, FA) {
+    card.innerHTML = '';
+    card.appendChild(el('div', { class: 'section-title' }, 'Accounting setup'));
+
+    const s = await FA.api('/api/settings');
+    const settings = s && !s.error ? s : {};
+    const resolved = settings.booksOpeningDate || '';
+    const explicit = settings.booksOpeningDateExplicit || '';
+    const entity = settings.reportingEntity || '';
+
+    // Reporting entity (read-only — set via deployment config).
+    card.appendChild(el('p', { class: 'section-help', style: { marginTop: '8px' } },
+      entity
+        ? el('span', null, 'Books are kept for ', el('strong', null, entity),
+            '. Document direction (a purchase vs a sale) is read from this entity’s point of view.')
+        : 'No reporting entity is configured. Set REPORTING_ENTITY so the AI knows whose books these are when deciding a buy vs a sale.'));
+
+    // Opening date.
+    card.appendChild(el('div', { class: 'section-title', style: { fontSize: '15px', marginTop: '18px' } },
+      'Books opening date'));
+    card.appendChild(el('p', { class: 'section-help', style: { marginTop: '6px' } },
+      el('span', null,
+        'The date your opening balances are as at. Any document dated on or before it is treated as ',
+        el('strong', null, 'already included in the opening balance'),
+        ' and filed as supporting evidence — it is not booked again. This lets you safely upload a folder that mixes old and current documents.')));
+
+    const input = el('input', {
+      class: 'input', type: 'date', value: resolved || '', style: { maxWidth: '200px' },
+    });
+    const saveBtn = el('button', { class: 'btn btn-primary' }, 'Save opening date');
+    const clearBtn = el('button', { class: 'btn btn-ghost' }, 'Clear');
+
+    saveBtn.addEventListener('click', async () => {
+      const date = (input.value || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { FA.toast('Please pick a valid date.', 'warn'); return; }
+      saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+      const res = await FA.api('/api/settings', { json: { booksOpeningDate: date } });
+      saveBtn.disabled = false; saveBtn.textContent = 'Save opening date';
+      if (res && res.error) { FA.toast(res.error, 'error'); return; }
+      FA.toast('Opening date set to ' + date + '.', 'success');
+      renderAccountingSetup(el, card, FA);
+    });
+    clearBtn.addEventListener('click', async () => {
+      clearBtn.disabled = true;
+      const res = await FA.api('/api/settings', { json: { booksOpeningDate: null } });
+      clearBtn.disabled = false;
+      if (res && res.error) { FA.toast(res.error, 'error'); return; }
+      FA.toast('Opening date cleared.', 'success');
+      renderAccountingSetup(el, card, FA);
+    });
+
+    card.appendChild(el('div', { class: 'row', style: { gap: '10px', alignItems: 'center', marginTop: '14px' } },
+      input, saveBtn, resolved ? clearBtn : null));
+    if (resolved && !explicit) {
+      card.appendChild(el('p', { class: 'section-help', style: { marginTop: '10px' } },
+        'This date was derived automatically from your opening balance. Set it explicitly above if your books start on a different date.'));
+    }
   }
 
   // -- HELP ------------------------------------------------------------------

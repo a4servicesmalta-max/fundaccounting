@@ -87,6 +87,11 @@ export interface Settings {
   // Periods that have been closed/locked: no posting, editing, or reversing into
   // them is allowed once locked (a reversal must be booked in an open period).
   lockedPeriods?: string[];
+  // The as-at date of the opening balances (ISO YYYY-MM-DD). Transactions dated on
+  // or before this are PRIOR-PERIOD — already reflected in the brought-forward
+  // opening balance — so intake files them as supporting evidence instead of
+  // re-booking them (which would double-count). Null = no opening cut-off set.
+  booksOpeningDate?: string | null;
 }
 
 // --- Opening balances (imported trial balance) ------------------------------
@@ -308,12 +313,46 @@ export function persist(): void {
 // --- Settings ---------------------------------------------------------------
 
 export function getSettings(): Settings {
-  return { currentPeriod: db.settings?.currentPeriod ?? null };
+  return {
+    currentPeriod: db.settings?.currentPeriod ?? null,
+    lockedPeriods: [...(db.settings?.lockedPeriods ?? [])],
+    booksOpeningDate: db.settings?.booksOpeningDate ?? null,
+  };
 }
 
 export function setCurrentPeriod(period: string): void {
   if (!db.settings) db.settings = { currentPeriod: null, lockedPeriods: [] };
   db.settings.currentPeriod = period;
+  flush();
+}
+
+/** The opening cut-off date: events on/before it are prior-period (in the opening
+ *  balance). Explicit setting wins; otherwise derive from the opening balance's
+ *  period (the day before that period starts); null when neither is available. */
+export function getBooksOpeningDate(): string | null {
+  const explicit = db.settings?.booksOpeningDate;
+  if (typeof explicit === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(explicit)) return explicit;
+  const ob = getOpeningBalance();
+  if (ob?.period && /^\d{4}-\d{2}$/.test(ob.period)) {
+    const [y, m] = ob.period.split('-').map(Number);
+    const lastPrevDay = new Date(Date.UTC(y, m - 1, 0)); // day 0 of month m = last day of m-1
+    return lastPrevDay.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
+/** True only for a real calendar date in YYYY-MM-DD form (rejects 2021-13-99,
+ *  2021-02-30, etc. — format-valid strings that aren't real dates). */
+function isRealIsoDate(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const [y, m, d] = date.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+export function setBooksOpeningDate(date: string | null): void {
+  if (!db.settings) db.settings = { currentPeriod: null, lockedPeriods: [] };
+  db.settings.booksOpeningDate = date && isRealIsoDate(date) ? date : null;
   flush();
 }
 

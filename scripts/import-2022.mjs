@@ -42,7 +42,10 @@ async function main() {
   const csv = fs.readFileSync(path.resolve('data/opening-2021.csv'), 'utf8');
   const prev = await (await fetch(`${BASE}/api/opening/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ csv }) })).json();
   log(`opening preview: balanced=${prev.balanced} lines=${(prev.lines || prev.rows || []).length || 'n/a'}`);
-  const imp = await (await fetch(`${BASE}/api/opening`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ csv }) })).json();
+  // The opening TB is the 2021 closing position; first reporting period is 2022-01,
+  // so the books opening date is 2021-12-31. Documents dated on/before that are
+  // prior-period (already in the opening balance) and must not be re-booked.
+  const imp = await (await fetch(`${BASE}/api/opening`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ csv, period: '2022-01', openingDate: '2021-12-31' }) })).json();
   log(`opening import: ${JSON.stringify(imp).slice(0, 200)}`);
 
   // 3. Gather + classify files.

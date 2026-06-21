@@ -17,6 +17,7 @@ import {
   updateDocument,
   getDocument,
   getSettings,
+  getBooksOpeningDate,
   listInvesteeNames,
   type DocumentRecord,
   type DraftRecord,
@@ -424,6 +425,19 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     // 4. Non-events stop here.
     if (intent.kind !== 'EVENT') {
       return { kind: intent.kind, fileName, documentId: doc.id, message: intent.rationale ?? '' };
+    }
+
+    // 4b. Prior-period guard. A document dated on/before the books opening date is
+    //     already captured in the brought-forward opening balance — re-booking it
+    //     would double-count. File it as supporting evidence (the reviewer can
+    //     reclassify if it genuinely belongs in the current period). This is what
+    //     lets a user drop a folder mixing historical and current documents.
+    const openingCut = getBooksOpeningDate();
+    const evDateStr = (intent.txnDate || '').slice(0, 10);
+    if (openingCut && /^\d{4}-\d{2}-\d{2}$/.test(evDateStr) && evDateStr <= openingCut) {
+      const note = `Dated ${evDateStr}, on/before the books opening date (${openingCut}) — already reflected in the opening balance. Filed as supporting evidence; reclassify if it belongs in the current period.`;
+      updateDocument(doc.id, { classification: 'EVIDENCE', note });
+      return { kind: 'EVIDENCE', fileName, documentId: doc.id, message: note };
     }
 
     // 5. Build account refs for this investee/instrument. The per-investee

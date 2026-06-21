@@ -18,6 +18,8 @@ import {
   listPeriods,
   getSettings,
   setCurrentPeriod,
+  getBooksOpeningDate,
+  setBooksOpeningDate,
   getDocument,
   listDocuments,
   listPostedLines,
@@ -124,6 +126,32 @@ app.post('/api/period', (req: Request, res: Response) => {
   }
   setCurrentPeriod(period);
   res.json({ current: period });
+});
+
+// --- Settings (engagement-level config) --------------------------------------
+app.get('/api/settings', (_req: Request, res: Response) => {
+  const s = getSettings();
+  res.json({
+    currentPeriod: s.currentPeriod,
+    lockedPeriods: s.lockedPeriods ?? [],
+    booksOpeningDate: getBooksOpeningDate(), // resolved (explicit or derived from opening balance)
+    booksOpeningDateExplicit: s.booksOpeningDate ?? null,
+    reportingEntity: process.env.REPORTING_ENTITY || null,
+  });
+});
+
+app.post('/api/settings', (req: Request, res: Response) => {
+  const raw = req.body?.booksOpeningDate;
+  if (raw === null || raw === '') {
+    setBooksOpeningDate(null);
+    return res.json({ booksOpeningDate: getBooksOpeningDate() });
+  }
+  const date = String(raw);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'Opening date must be in YYYY-MM-DD format.' });
+  }
+  setBooksOpeningDate(date);
+  res.json({ booksOpeningDate: getBooksOpeningDate() });
 });
 
 // --- Upload ------------------------------------------------------------------

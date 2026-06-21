@@ -13,6 +13,7 @@ import {
   clearOpeningBalance,
   getSettings,
   listPeriods,
+  setBooksOpeningDate,
   type OpeningBalanceRecord,
 } from '../db/store';
 import { accountName } from '../core/chart';
@@ -69,6 +70,12 @@ openingRouter.post('/', (req: Request, res: Response) => {
   }
 
   const period = pickPeriod(req.body?.period);
+  // Optional explicit opening cut-off date (the as-at date of these balances).
+  // When omitted, getBooksOpeningDate derives it from `period` (day before it).
+  const openingDate = req.body?.openingDate;
+  if (typeof openingDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(openingDate)) {
+    setBooksOpeningDate(openingDate);
+  }
   const record: OpeningBalanceRecord = {
     period,
     importedAt: new Date().toISOString(),

@@ -39,6 +39,22 @@ test('the partial-disposal share-purchase example parses to the full figure', ()
   assert.equal(amountOf('2.500.000,00'), 2500000);
 });
 
+test('dates are normalised to ISO so matching + period scoping work', () => {
+  // A human-readable date silently broke the NH-0 bank matcher (Date.parse of
+  // "20 March 2025T00:00:00Z" is NaN) and period derivation.
+  function txnDateOf(raw: string): unknown {
+    const o = normalizeIntakeObject({
+      kind: 'EVENT', eventType: 'ACQUISITION', investee: 'Co', sourceFigures: { amount: 1 }, txnDate: raw,
+    }) as { txnDate?: unknown };
+    return o.txnDate;
+  }
+  assert.equal(txnDateOf('20 March 2025'), '2025-03-20');
+  assert.equal(txnDateOf('March 20, 2025'), '2025-03-20');
+  assert.equal(txnDateOf('2025-03-20'), '2025-03-20');
+  assert.equal(txnDateOf('20/03/2025'), '2025-03-20'); // day-first EU
+  assert.equal(txnDateOf('14 June 2024'), '2024-06-14');
+});
+
 test('the headline figure is captured under the model’s own field names', () => {
   // The model names the amount differently per deal type; all must be picked up so
   // the figure is never silently lost (a loan booked €0 under principalAmount).

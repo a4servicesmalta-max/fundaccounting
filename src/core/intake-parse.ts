@@ -106,6 +106,38 @@ function firstStr(...vs: unknown[]): string | undefined {
   return undefined;
 }
 
+const MONTHS: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+// Normalise a date the model wrote in ANY form to ISO YYYY-MM-DD. The model emits
+// "20 March 2025", "March 20, 2025", "20/03/2025", "2025-03-20", etc.; downstream
+// (period derivation, the books-opening-date guard, the NH-0 bank matcher which
+// does Date.parse(`${d}T00:00:00Z`)) all assume ISO, so a human-readable date
+// silently broke matching and period scoping. Unparseable input is returned as-is
+// so the impossible-date validator still flags it.
+function toIsoDate(s: string | undefined): string {
+  const raw = (s || '').trim();
+  if (!raw) return '';
+  const iso = raw.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  // "20 March 2025" / "20 Mar 2025" / "March 20, 2025"
+  const dmy = raw.match(/(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})/);
+  const mdy = raw.match(/([A-Za-z]{3,})\s+(\d{1,2}),?\s+(\d{4})/);
+  let y: number | undefined, m: number | undefined, d: number | undefined;
+  if (dmy) { d = +dmy[1]; m = MONTHS[dmy[2].slice(0, 3).toLowerCase()]; y = +dmy[3]; }
+  else if (mdy) { m = MONTHS[mdy[1].slice(0, 3).toLowerCase()]; d = +mdy[2]; y = +mdy[3]; }
+  else {
+    // dd/mm/yyyy or dd.mm.yyyy (day-first, the EU convention these docs use)
+    const num = raw.match(/(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/);
+    if (num) { d = +num[1]; m = +num[2]; y = +num[3]; }
+  }
+  if (y && m && d && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  return raw; // leave for the impossible-date validator downstream
+}
+
 /** Strong investment signals: a named investee plus either a share quantity or a
  *  loan principal, with a monetary figure. When these are present the document is
  *  a share-purchase/disposal or loan agreement even if the model hedged the kind
@@ -171,10 +203,10 @@ export function normalizeIntakeObject(raw: unknown): unknown {
   const currency = firstStr(o.currency, sf.currency) || 'EUR';
   // Prefer the settlement/value date (when cash moves) over the trade/agreement
   // date, then fall back to any date field the model used.
-  const txnDate = firstStr(
+  const txnDate = toIsoDate(firstStr(
     o.txnDate, o.settlementDate, o.valueDate, o.completionDate, o.tradeDate, o.dealDate,
     o.effectiveDate, o.documentDate, o.agreementDate, o.signingDate, o.date, o.transactionDate, o.issueDate,
-  ) || '';
+  ));
 
   return {
     kind: 'EVENT',

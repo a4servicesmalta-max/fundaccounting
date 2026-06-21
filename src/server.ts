@@ -534,16 +534,31 @@ app.get('/api/overview', (_req: Request, res: Response) => {
         amount: Math.round(((d.engineFigures && d.engineFigures.functionalAmount) || 0) * 100) / 100,
       }));
 
-    // NAV series: cumulative posted control-account value by period.
-    const byPeriod = new Map<string, number>();
-    for (const line of listPostedLines()) {
-      if (!(line.accountCode.startsWith('030') || line.accountCode.startsWith('032'))) continue;
-      byPeriod.set(line.period, (byPeriod.get(line.period) || 0) + line.amount);
+    // NAV series: investments (030) + loans (032) carried as-at the END of every
+    // period that has any posted activity — so the trend spans the whole book
+    // history, not only the periods where a holding happened to change. (The old
+    // version only emitted a point when 030/032 moved, so opening-only books gave
+    // a single point and the chart showed "not enough history".)
+    const allLines = listPostedLines();
+    const isInvest = (code: string) => code.startsWith('030') || code.startsWith('032');
+    // Imported opening balances are the brought-forward baseline — present in every
+    // period regardless of the date they were tagged with — so the NAV trend starts
+    // at that baseline and moves with subsequent transactions.
+    const openingNav = r2(allLines.filter((l) => isInvest(l.accountCode) && l.eventType === 'OPENING').reduce((s, l) => s + l.amount, 0));
+    const movePeriods = [...new Set(allLines.filter((l) => l.eventType !== 'OPENING').map((l) => l.period).filter(Boolean))].sort();
+    let navSeries = movePeriods.map((p) => ({
+      period: p,
+      value: r2(openingNav + allLines.filter((l) => isInvest(l.accountCode) && l.eventType !== 'OPENING' && l.period <= p).reduce((s, l) => s + l.amount, 0)),
+    }));
+    // Guarantee the chart can draw whenever there are holdings (≥2 points): a book
+    // with only the opening position still renders a flat NAV line.
+    const navNow = r2(openingNav + allLines.filter((l) => isInvest(l.accountCode) && l.eventType !== 'OPENING').reduce((s, l) => s + l.amount, 0));
+    if (navSeries.length < 2 && navNow !== 0) {
+      navSeries = [
+        { period: 'opening', value: openingNav || navNow },
+        { period: getSettings().currentPeriod || 'current', value: navNow },
+      ];
     }
-    let running = 0;
-    const navSeries = [...byPeriod.keys()]
-      .sort()
-      .map((period) => { running += byPeriod.get(period) || 0; return { period, value: Math.round(running * 100) / 100 }; });
 
     res.json({
       kpis: {

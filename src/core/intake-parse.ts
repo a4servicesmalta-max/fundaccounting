@@ -88,8 +88,10 @@ const AMOUNT_KEYS = [
   'amount', 'total', 'totalPrice', 'totalAmount', 'totalConsideration', 'consideration',
   'proceeds', 'loanAmount', 'principal', 'principalAmount', 'loanPrincipal', 'nominalAmount',
   'faceValue', 'purchasePrice', 'salePrice', 'disposalProceeds', 'subscriptionAmount',
-  'grossAmount', 'netAmount', 'value',
+  'dividendAmount', 'distributionAmount', 'grossDividend', 'netDividend', 'interestAmount',
+  'repaymentAmount', 'grossAmount', 'netAmount', 'value',
 ];
+const CCY_KEYS = ['currency', 'ccy', 'currencyCode', 'curr'];
 function pickNum(containers: unknown[], keys: string[]): number | undefined {
   for (const c of containers) {
     if (!c || typeof c !== 'object') continue;
@@ -97,6 +99,19 @@ function pickNum(containers: unknown[], keys: string[]): number | undefined {
     for (const k of keys) {
       const n = toNum(rec[k]);
       if (n !== undefined) return n;
+    }
+  }
+  return undefined;
+}
+// Same container scan for the currency string (the model sometimes nests it under
+// "amounts"/"figures", which left foreign amounts defaulting to EUR with no FX).
+function pickStr(containers: unknown[], keys: string[]): string | undefined {
+  for (const c of containers) {
+    if (!c || typeof c !== 'object') continue;
+    const rec = c as Record<string, unknown>;
+    for (const k of keys) {
+      const v = rec[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
     }
   }
   return undefined;
@@ -200,7 +215,7 @@ export function normalizeIntakeObject(raw: unknown): unknown {
   }
   if (amount === undefined && perShare !== undefined && quantity === undefined) amount = perShare;
   const fairValue = firstNum(sf.fairValue, o.fairValue, o.valuation);
-  const currency = firstStr(o.currency, sf.currency) || 'EUR';
+  const currency = pickStr([o, sf, o.amounts, o.figures, o.financials, o.details, o.terms], CCY_KEYS) || 'EUR';
   // Prefer the settlement/value date (when cash moves) over the trade/agreement
   // date, then fall back to any date field the model used.
   const txnDate = toIsoDate(firstStr(

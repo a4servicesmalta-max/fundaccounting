@@ -39,6 +39,21 @@ test('the partial-disposal share-purchase example parses to the full figure', ()
   assert.equal(amountOf('2.500.000,00'), 2500000);
 });
 
+test('foreign-currency distribution keeps its amount AND currency', () => {
+  // A USD dividend was booking €0 with currency defaulting to EUR (no FX). The
+  // amount + currency must survive whether top-level or nested.
+  function amtCcy(raw: Record<string, unknown>): { amount: unknown; currency: unknown } {
+    const o = normalizeIntakeObject(raw) as { sourceFigures?: { amount?: unknown }; currency?: unknown };
+    return { amount: o.sourceFigures?.amount, currency: o.currency };
+  }
+  const top = amtCcy({ kind: 'EVENT', eventType: 'DISTRIBUTION', investee: 'Vortex', amount: 25000, currency: 'USD' });
+  assert.equal(top.amount, 25000);
+  assert.equal(top.currency, 'USD');
+  const nested = amtCcy({ kind: 'EVENT', eventType: 'DISTRIBUTION', investee: 'Vortex', dividendAmount: 25000, amounts: { currency: 'USD' } });
+  assert.equal(nested.amount, 25000);
+  assert.equal(nested.currency, 'USD');
+});
+
 test('dates are normalised to ISO so matching + period scoping work', () => {
   // A human-readable date silently broke the NH-0 bank matcher (Date.parse of
   // "20 March 2025T00:00:00Z" is NaN) and period derivation.

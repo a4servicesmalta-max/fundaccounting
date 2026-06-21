@@ -49,6 +49,9 @@ export async function extractIntent(input: ExtractInput): Promise<ExtractResult>
       folderPath,
       investees: investees.map((name) => ({ name, aliases: [] })),
       documentText: content.kind === 'text' ? content.text : undefined,
+      // Deployment config: the fund whose books these are, so the agent can decide
+      // ACQUISITION vs DISPOSAL by which side of an SPA the entity is on.
+      reportingEntity: process.env.REPORTING_ENTITY || undefined,
     });
 
     const client = new Anthropic(); // reads ANTHROPIC_API_KEY from env

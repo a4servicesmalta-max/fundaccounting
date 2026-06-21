@@ -123,8 +123,21 @@ test('rescues an SPA the model hedged to EVIDENCE into a typed ACQUISITION', () 
   } else { assert.fail('expected EVENT'); }
 });
 
-test('rescues a hedged disposal (sale wording) into DISPOSAL', () => {
+// A bare "share sale agreement" title (the heading of EVERY SPA, whether the fund
+// buys or sells) does not decide direction: the deterministic fallback defaults to
+// ACQUISITION (a fund's predominant action). The precise buyer-vs-seller call is the
+// AI's, which is given the reporting entity. This is the fix for buyer-side SPAs that
+// used to be mis-booked as disposals and understated the holdings.
+test('a bare share-sale title is ambiguous → fallback defaults to ACQUISITION', () => {
   const raw = { kind: 'UNKNOWN', documentTitle: 'Umowa sprzedaży udziałów', investee: 'Woodpecker.co', quantity: 800, totalPrice: 596955, currency: 'PLN' };
+  const r = parseIntakeResponse(JSON.stringify(raw));
+  assert.equal(r.ok, true);
+  if (r.ok && r.intent.kind === 'EVENT') assert.equal(r.intent.eventType, 'ACQUISITION');
+  else assert.fail('expected EVENT');
+});
+
+test('an explicit seller/disposal signal still yields DISPOSAL', () => {
+  const raw = { kind: 'UNKNOWN', documentTitle: 'Share sale — the Fund as Seller disposes its holding', investee: 'Woodpecker.co', quantity: 800, totalPrice: 596955, currency: 'PLN' };
   const r = parseIntakeResponse(JSON.stringify(raw));
   assert.equal(r.ok, true);
   if (r.ok && r.intent.kind === 'EVENT') assert.equal(r.intent.eventType, 'DISPOSAL');

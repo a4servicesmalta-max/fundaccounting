@@ -40,3 +40,22 @@ test('empty roster renders without throwing', () => {
   const { user } = buildIntakePrompt({ ...ctx, investees: [] });
   assert.match(user, /none provided/i);
 });
+
+test('system prompt states the buyer/seller direction rule', () => {
+  const { system } = buildIntakePrompt(ctx);
+  assert.match(system, /buyer/i);
+  assert.match(system, /seller/i);
+  assert.match(system, /ACQUISITION/);
+  assert.match(system, /DISPOSAL/);
+  assert.match(system, /perspective/i);
+});
+
+test('user prompt surfaces the reporting entity when provided', () => {
+  const { user } = buildIntakePrompt({ ...ctx, reportingEntity: 'Acme Fund Ltd' });
+  assert.match(user, /Reporting entity.*Acme Fund Ltd/);
+});
+
+test('reporting entity line is omitted when not provided', () => {
+  const { user } = buildIntakePrompt(ctx);
+  assert.doesNotMatch(user, /Reporting entity/);
+});

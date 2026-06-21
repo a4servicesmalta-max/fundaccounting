@@ -113,15 +113,20 @@ export function normalizeIntakeObject(raw: unknown): unknown {
   const sf = (o.sourceFigures && typeof o.sourceFigures === 'object') ? o.sourceFigures : {};
   let eventType = mapped || (typeof o.eventType === 'string' ? o.eventType.toUpperCase() : '');
   // No usable event label (the model hedged the kind)? Infer it from the signals:
-  // a loan principal → LOAN_ADVANCE; shares → DISPOSAL when the text says sell/
-  // dispose/transfer (sprzedaż/zbycie), else ACQUISITION.
+  // a loan principal → LOAN_ADVANCE; shares → ACQUISITION by default. A Sale &
+  // Purchase Agreement has BOTH a buyer and a seller, so "sale"/"sell"/"transfer"/
+  // "sprzedaż" appear regardless of which side the fund is on and cannot decide the
+  // direction. Only an explicit disposal/seller signal (the fund selling/disposing)
+  // flips it to DISPOSAL; the precise buyer-vs-seller call is the AI's (it is told the
+  // reporting entity) — this is just the deterministic fallback when the model hedged.
   if (!EVENT_ALIASES[eventType]) {
     const hasShares = firstNum(sf.quantity, o.quantity, o.shares, o.numberOfShares, o.noShares) !== undefined;
     const hasLoan = firstNum(o.loanAmount, o.principal) !== undefined;
     const txt = (firstStr(o.documentType, o.documentTitle, o.title, o.rationale, o.summary, o.notes, o.eventType) || '').toLowerCase();
     if (hasLoan && !hasShares) eventType = 'LOAN_ADVANCE';
     else if (hasShares || /\bspa\b|share|udzia|akcj/.test(txt)) {
-      eventType = /dispos|\bsale\b|\bsell\b|sprzeda|zbyci|transfer/.test(txt) ? 'DISPOSAL' : 'ACQUISITION';
+      const sellsOut = /dispos|zbyci|written?\s*-?\s*off|write[- ]?off|as (the )?seller|fund[^.]{0,40}\bseller\b|seller[^.]{0,40}fund/.test(txt);
+      eventType = sellsOut ? 'DISPOSAL' : 'ACQUISITION';
     }
   }
   const isLoan = eventType === 'LOAN_ADVANCE' || eventType === 'LOAN_REPAYMENT';

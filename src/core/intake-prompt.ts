@@ -7,6 +7,11 @@ export interface IntakeContext {
   investees: Array<{ name: string; aliases: string[] }>;
   /** Extracted document text. If absent, a PDF is attached to the message instead. */
   documentText?: string;
+  /** The reporting entity whose books these are (the fund/holder). Used to decide
+   *  event DIRECTION: a Sale & Purchase Agreement has a buyer and a seller, and the
+   *  reporting entity may be either — which side it is on flips ACQUISITION vs
+   *  DISPOSAL. When absent, the agent infers the holder from context. */
+  reportingEntity?: string;
 }
 
 const SYSTEM = `You are AG-A11, an intake agent for VC fund investment accounting.
@@ -23,9 +28,24 @@ Classify the document with "kind":
   extract, memorandum & articles, beneficial-owner or risk assessment, KYC).
 - "UNKNOWN": you cannot tell — set needsReview=true.
 
-Use the folder path and file name as strong signals (e.g. ".../SHARES/DISPOSAL/<investee>/..."
-indicates a DISPOSAL of shares in <investee>). Match the investee to the provided roster by name
-or alias; if none matches, use the name exactly as written in the document.
+EVENT DIRECTION — classify from the REPORTING ENTITY'S perspective (the fund/holder
+whose books these are; it is given to you as "Reporting entity" when known, and is
+NEVER one of the roster investees — the investees are the companies it invests IN).
+A Sale & Purchase Agreement (SPA), share transfer, or sale order ALWAYS has a buyer
+and a seller, and the reporting entity may be EITHER. Do not infer direction from the
+words "sale"/"SPA"/"transfer" alone — identify which side the reporting entity is on:
+- Reporting entity BUYS / acquires / subscribes for shares  → eventType "ACQUISITION"
+- Reporting entity SELLS / disposes / transfers OUT its shares → eventType "DISPOSAL"
+- Reporting entity LENDS / advances funds → "LOAN_ADVANCE"; receives repayment → "LOAN_REPAYMENT"
+The document usually states the roles explicitly (e.g. "the Fund, as Seller", or
+"acquisition by the Buyer [the Fund]") — use that. When a document clearly records an
+investment transaction, return a TYPED eventType (ACQUISITION/DISPOSAL/LOAN_ADVANCE/
+LOAN_REPAYMENT/DISTRIBUTION/INTEREST/FX_REVAL/WRITE_OFF) rather than leaving it generic.
+
+Use the folder path and file name as supporting signals (e.g. ".../SHARES/DISPOSAL/<investee>/..."
+suggests a DISPOSAL of shares in <investee>), but the document's stated roles and the
+reporting entity's side OVERRIDE a folder name when they conflict. Match the investee to
+the provided roster by name or alias; if none matches, use the name exactly as written.
 
 Return ONLY a single JSON object. No prose and no markdown code fences.`;
 
@@ -40,9 +60,13 @@ export function buildIntakePrompt(ctx: IntakeContext): { system: string; user: s
     ? `Document text:\n"""\n${ctx.documentText}\n"""`
     : 'The document is attached as a PDF to this message.';
 
+  const entityLine = ctx.reportingEntity
+    ? `Reporting entity (the fund whose books these are): ${ctx.reportingEntity}\n`
+    : '';
+
   const user = `File name: ${ctx.fileName}
 Folder path: ${ctx.folderPath}
-
+${entityLine}
 Known investees (roster):
 ${roster}
 

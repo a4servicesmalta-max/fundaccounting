@@ -340,8 +340,21 @@ export interface TrialBalanceReport {
   totals: { debit: number; credit: number };
 }
 
+/** Per-investee investment/loan sub-accounts (030-gamivo / 032-climax) roll up to
+ *  their standard control parent (030 / 032) so the trial balance presents clean
+ *  standard chart accounts; the per-holding detail stays in Portfolio/Ledger. */
+export function rollupForTrialBalance(code: string): string {
+  return /^03[02]-/.test(code) ? code.split('-')[0] : code;
+}
+
 export function trialBalance(period?: string): TrialBalanceReport {
-  const balances = balancesFromLines([...postedLinesIn(period), ...extraLedgerLinesIn(period)]);
+  const raw = balancesFromLines([...postedLinesIn(period), ...extraLedgerLinesIn(period)]);
+  // Aggregate per-investee sub-accounts under their standard parent control account.
+  const balances = new Map<string, number>();
+  for (const [code, bal] of raw) {
+    const key = rollupForTrialBalance(code);
+    balances.set(key, round2((balances.get(key) ?? 0) + bal));
+  }
   const rows: TrialBalanceRow[] = [];
   let totalDebit = 0;
   let totalCredit = 0;

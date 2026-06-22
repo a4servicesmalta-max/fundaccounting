@@ -572,6 +572,18 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
       carryingCostFunctional,
     });
 
+    // 7b. Zero-amount guard. A value-bearing event whose figure couldn't be read
+    //     would otherwise post a meaningless €0 entry that looks ready to approve.
+    //     Flag it and hold it below the bulk-approve bar so the reviewer enters the
+    //     amount (WRITE_OFF can legitimately be 0 when a position is already nil —
+    //     that case is already noted via the carrying-cost guard above).
+    const zeroAmount = Math.abs(Number(composition.engineFigures.functionalAmount) || 0) < 0.01
+      && intent.eventType !== 'WRITE_OFF';
+    if (zeroAmount) {
+      const znote = 'We couldn’t read the amount from this document — please enter the figure (or check the document) before posting.';
+      note = note ? `${note} ${znote}` : znote;
+    }
+
     // 8. Persist the draft (PENDING).
     const now = new Date().toISOString();
     const draft: DraftRecord = {
@@ -588,8 +600,8 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
       sourceFigures: composition.sourceFigures,
       engineFigures: composition.engineFigures,
       lines: composition.engineLines,
-      // An impossible date forces per-line review (kept below the bulk-approve bar).
-      confidence: dateImpossible ? Math.min(intent.confidence ?? 0.6, 0.3) : intent.confidence,
+      // An impossible date or an unreadable amount forces per-line review.
+      confidence: (dateImpossible || zeroAmount) ? Math.min(intent.confidence ?? 0.6, 0.3) : intent.confidence,
       citation: intent.citation,
       rationale: note ? `${intent.rationale} (${note})` : intent.rationale,
       docName: fileName,

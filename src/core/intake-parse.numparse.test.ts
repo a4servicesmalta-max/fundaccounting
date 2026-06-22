@@ -54,6 +54,30 @@ test('foreign-currency distribution keeps its amount AND currency', () => {
   assert.equal(nested.currency, 'USD');
 });
 
+test('figures given as an array of {label,value,currency} are extracted', () => {
+  // Real failure: a receivables purchase returned amounts:[{purchase price…}],
+  // which booked €0. Pick the headline (purchase price) + its currency.
+  const o = normalizeIntakeObject({
+    kind: 'EVENT', eventType: 'ACQUISITION', investee: 'Jupi Park',
+    amounts: [
+      { label: 'Claim component a', value: '4400.00', currency: 'PLN' },
+      { label: 'Purchase price for the Claim', value: '191000.00', currency: 'PLN' },
+      { label: 'Claim component b', value: '121929.90', currency: 'PLN' },
+    ],
+  }) as { sourceFigures?: { amount?: unknown }; currency?: unknown };
+  assert.equal(o.sourceFigures?.amount, 191000);
+  assert.equal(o.currency, 'PLN');
+});
+
+test('an amount array with no headline label picks the largest value', () => {
+  const o = normalizeIntakeObject({
+    kind: 'EVENT', eventType: 'DISTRIBUTION', investee: 'X',
+    amounts: [{ label: 'fee', value: 50 }, { label: 'net', value: 9000 }, { label: 'tax', value: 200 }],
+    currency: 'USD',
+  }) as { sourceFigures?: { amount?: unknown } };
+  assert.equal(o.sourceFigures?.amount, 9000);
+});
+
 test('dates are normalised to ISO so matching + period scoping work', () => {
   // A human-readable date silently broke the NH-0 bank matcher (Date.parse of
   // "20 March 2025T00:00:00Z" is NaN) and period derivation.

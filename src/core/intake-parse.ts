@@ -94,7 +94,7 @@ const AMOUNT_KEYS = [
 const CCY_KEYS = ['currency', 'ccy', 'currencyCode', 'curr'];
 function pickNum(containers: unknown[], keys: string[]): number | undefined {
   for (const c of containers) {
-    if (!c || typeof c !== 'object') continue;
+    if (!c || typeof c !== 'object' || Array.isArray(c)) continue;
     const rec = c as Record<string, unknown>;
     for (const k of keys) {
       const n = toNum(rec[k]);
@@ -102,6 +102,25 @@ function pickNum(containers: unknown[], keys: string[]): number | undefined {
     }
   }
   return undefined;
+}
+
+// The model often returns the figures as an ARRAY of {label, value, currency}
+// (a receivables purchase listing the purchase price + claim components; an invoice
+// listing line items). Pick the HEADLINE figure: a label that names the deal total
+// (purchase price / total / consideration / principal / amount due), else the
+// largest value. Returns its value + currency so neither is lost.
+const HEADLINE_LABEL = /purchase price|total|consideration|principal|amount due|gross|net amount|invoice total|price|proceeds|loan amount|subscription/i;
+function pickFromAmountArray(arr: unknown): { amount: number; currency?: string } | null {
+  if (!Array.isArray(arr)) return null;
+  const entries = arr
+    .map((x) => (x && typeof x === 'object' ? x as Record<string, unknown> : null))
+    .filter((x): x is Record<string, unknown> => x !== null)
+    .map((x) => ({ n: toNum(x.value ?? x.amount ?? x.total), label: String(x.label ?? x.name ?? x.description ?? '').toLowerCase(), ccy: typeof x.currency === 'string' ? x.currency : undefined }))
+    .filter((e) => e.n !== undefined) as { n: number; label: string; ccy?: string }[];
+  if (!entries.length) return null;
+  const preferred = entries.find((e) => HEADLINE_LABEL.test(e.label));
+  const chosen = preferred || entries.reduce((a, b) => (Math.abs(b.n) > Math.abs(a.n) ? b : a));
+  return { amount: chosen.n, currency: chosen.ccy };
 }
 // Same container scan for the currency string (the model sometimes nests it under
 // "amounts"/"figures", which left foreign amounts defaulting to EUR with no FX).
@@ -210,12 +229,20 @@ export function normalizeIntakeObject(raw: unknown): unknown {
     [sf, o, o.amounts, o.figures, o.financials, o.details, o.terms],
     AMOUNT_KEYS,
   );
+  // The figure may be in an ARRAY of {label, value, currency} (receivables purchase,
+  // invoice line items). Pick the headline value + carry its currency.
+  let arrayCcy: string | undefined;
+  if (amount === undefined) {
+    const fromArr = pickFromAmountArray(o.amounts) || pickFromAmountArray(o.figures)
+      || pickFromAmountArray(o.lineItems) || pickFromAmountArray(o.items) || pickFromAmountArray(o.amountBreakdown);
+    if (fromArr) { amount = fromArr.amount; arrayCcy = fromArr.currency; }
+  }
   if (amount === undefined && quantity !== undefined && perShare !== undefined) {
     amount = Math.round(quantity * perShare * 100) / 100;
   }
   if (amount === undefined && perShare !== undefined && quantity === undefined) amount = perShare;
   const fairValue = firstNum(sf.fairValue, o.fairValue, o.valuation);
-  const currency = pickStr([o, sf, o.amounts, o.figures, o.financials, o.details, o.terms], CCY_KEYS) || 'EUR';
+  const currency = pickStr([o, sf, o.amounts, o.figures, o.financials, o.details, o.terms], CCY_KEYS) || arrayCcy || 'EUR';
   // Prefer the settlement/value date (when cash moves) over the trade/agreement
   // date, then fall back to any date field the model used.
   const txnDate = toIsoDate(firstStr(

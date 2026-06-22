@@ -499,14 +499,23 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
       return { kind: 'EVIDENCE', fileName, documentId: doc.id, message: note };
     }
 
-    // 5. Build account refs for this investee/instrument. The per-investee
-    //    control sub-account is registered with the investee's name so it reads
-    //    nicely everywhere (e.g. "030-gamivo" → "Gamivo S.A.").
-    const controlCode = `${controlCodeFor(intent.instrument)}-${slug(intent.investeeName)}`;
+    // 5. Build account refs for this investee/instrument. The per-investee control
+    //    sub-account is registered with the investee's name (e.g. "030-gamivo").
+    //    A purchase/assignment of a RECEIVABLE (claim/debt) is NOT a share or loan —
+    //    its debit belongs in Other receivables (240-<debtor>), not an investment
+    //    control — so the entry is Dr 240 / Cr Bank, and it never inflates the
+    //    portfolio (which counts only 030/032).
+    const recvText = `${intent.citation || ''} ${intent.rationale || ''} ${fileName}`.toLowerCase();
+    const isReceivablePurchase =
+      (intent.eventType === 'ACQUISITION' || intent.eventType === 'DISPOSAL') &&
+      /receivabl|\bclaim\b|debt purchase|assignment of receiv|factoring|cession of/.test(recvText);
+    const controlCode = isReceivablePurchase
+      ? `240-${slug(intent.investeeName)}`
+      : `${controlCodeFor(intent.instrument)}-${slug(intent.investeeName)}`;
     ensureAccount(
       controlCode,
-      intent.investeeName,
-      intent.instrument === 'SHARES' ? 'ASSET' : 'ASSET',
+      isReceivablePurchase ? `Receivable — ${intent.investeeName}` : intent.investeeName,
+      'ASSET',
     );
     const refs: FundAccountRefs = {
       controlCode,

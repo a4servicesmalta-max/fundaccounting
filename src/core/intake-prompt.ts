@@ -22,8 +22,11 @@ Report monetary amounts and quantities EXACTLY as they appear in the document, i
 document's own currency.
 
 Classify the document with "kind":
-- "EVENT": it records a bookable investment event (share purchase/sale, loan advance/repayment,
-  capital call, distribution/dividend, interest, FX revaluation, or write-off).
+- "EVENT": it records a bookable investment event — a share purchase/sale, loan advance/
+  repayment, capital call, distribution/dividend, interest, FX revaluation, write-off, OR
+  a **purchase or sale/assignment of a receivable or claim (debt purchase / factoring)**.
+  An agreement under which the reporting entity BUYS or SELLS a claim/receivable for a price
+  is a bookable EVENT (not mere supporting evidence): give its purchase price as the amount.
 - "EVIDENCE": supporting material that is not itself a bookable event (registry/company-house
   extract, memorandum & articles, beneficial-owner or risk assessment, KYC).
 - "UNKNOWN": you cannot tell — set needsReview=true.

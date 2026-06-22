@@ -85,6 +85,18 @@ function round2(n: number): number {
  * figure to EUR and forces the entry to balance; the user approves it. Returns
  * the new draft id, or null if nothing usable could be suggested.
  */
+/** A suggested journal is degenerate — nothing real to book — when it carries no
+ *  amount at all (an empty file / a non-accounting note) or every line sits in the
+ *  9999 suspense account. Such a suggestion must be filed as UNKNOWN, never queued
+ *  as a draft to approve. PURE. */
+export function isDegenerateSuggestion(
+  lines: ReadonlyArray<{ accountCode: string; amount: number }>,
+  origMax: number,
+): boolean {
+  if (!lines.length || origMax === 0) return true;
+  return lines.every((l) => l.accountCode === '9999');
+}
+
 async function trySuggestJournal(
   documentId: string,
   fileName: string,
@@ -122,6 +134,11 @@ async function trySuggestJournal(
     }
 
     const origMax = s.lines.reduce((m, l) => Math.max(m, Math.abs(Number(l.amount) || 0)), 0);
+    // A degenerate suggestion must not become a draft to approve: an empty file or
+    // a non-accounting note (shopping list etc.) yields a €0 entry, and an entry
+    // entirely in the 9999 suspense account books nothing real. Return null so the
+    // document is filed as UNKNOWN ("couldn't make sense of this") instead.
+    if (isDegenerateSuggestion(lines, origMax)) return null;
     // Store fxRate in the canonical foreign-per-EUR convention (same as the typed
     // event path / ECB table), not the raw EUR-per-unit rate used for the math.
     const conv = functionalFromEurPerUnit(origMax, rate);

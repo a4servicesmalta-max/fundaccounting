@@ -218,32 +218,92 @@
           chooseFolderBtn.disabled = on;
         }
 
-        // The actual upload (files[] multipart → POST /api/upload).
+        // --- bulk-safe upload helpers --------------------------------------
+        // A single /api/upload request reads every file it carries SEQUENTIALLY
+        // with an AI call (~20s each) before it responds. Sending a whole folder
+        // in one request makes a multi-minute call that overruns serverless /
+        // proxy timeouts and loses the entire batch. So we split a large drop
+        // into small chunks, upload them one after another, show running
+        // progress, and merge the results — each request stays short, the user
+        // sees progress, and one failed chunk can't sink the rest.
+        const UPLOAD_CHUNK_SIZE = 4;
+        const relName = (f) => (f._relPath || f.webkitRelativePath || f.name);
+        const isZipFile = (f) => /\.zip$/i.test(relName(f) || '');
+
+        // Each zip can expand to many inner documents server-side, so give every
+        // zip its own request; batch the plain files in fixed-size chunks.
+        function chunkForUpload(files) {
+          const chunks = [];
+          const plain = [];
+          for (const f of files) {
+            if (isZipFile(f)) chunks.push([f]);
+            else plain.push(f);
+          }
+          for (let i = 0; i < plain.length; i += UPLOAD_CHUNK_SIZE) {
+            chunks.push(plain.slice(i, i + UPLOAD_CHUNK_SIZE));
+          }
+          return chunks;
+        }
+
+        const UPLOAD_RESULT_KEYS = ['events', 'evidence', 'bank', 'arap', 'duplicates', 'unknown', 'errors'];
+        function mergeUploadResult(agg, r) {
+          if (!r) return agg;
+          agg.processed += Number(r.processed) || 0;
+          for (const k of UPLOAD_RESULT_KEYS) {
+            if (Array.isArray(r[k])) agg[k] = agg[k].concat(r[k]);
+          }
+          return agg;
+        }
+
+        // The actual upload (files[] multipart → POST /api/upload), chunked.
         async function uploadFiles(files) {
           if (!files || !files.length || busy) return;
           summarySlot.innerHTML = '';
 
-          const form = new FormData();
-          for (const f of files) {
-            // Server reads the field name `files`; keep the relative path as the
-            // filename so dropped/selected folders keep their structure.
-            form.append('files', f, (f._relPath || f.webkitRelativePath || f.name));
-          }
-
           const n = files.length;
+          const chunks = chunkForUpload(files);
+          const many = chunks.length > 1;
+          const agg = { processed: 0, events: [], evidence: [], bank: [], arap: [], duplicates: [], unknown: [], errors: [] };
+
           setBusy(true, n === 1 ? 'Reading your document…' : `Reading your ${n} documents…`);
           // Bank statements are transcribed line-by-line and can take a minute.
           const slowHint = setTimeout(() => {
-            if (busy) busyText.textContent = 'Still reading… bank statements with lots of lines can take a minute.';
+            if (busy && !many) busyText.textContent = 'Still reading… bank statements with lots of lines can take a minute.';
           }, 8000);
 
-          const r = await FA.api('/api/upload', { method: 'POST', body: form });
+          for (let c = 0; c < chunks.length; c++) {
+            const chunk = chunks[c];
+            if (many) busyText.textContent = `Reading your documents… (${agg.processed} of ${n} done)`;
+
+            const form = new FormData();
+            for (const f of chunk) {
+              // Server reads the field name `files`; keep the relative path as the
+              // filename so dropped/selected folders keep their structure.
+              form.append('files', f, relName(f));
+            }
+
+            let r = null;
+            try {
+              r = await FA.api('/api/upload', { method: 'POST', body: form });
+            } catch (_) { r = null; }
+
+            if (!r || r.error) {
+              // Don't abort the whole batch — flag this chunk's files and carry on.
+              for (const f of chunk) {
+                agg.errors.push({ fileName: relName(f), message: (r && r.error) || 'Could not be read — please try uploading it again.' });
+              }
+              continue;
+            }
+            mergeUploadResult(agg, r);
+          }
+
           clearTimeout(slowHint);
           setBusy(false);
 
-          if (!r || r.error) {
+          const r = agg;
+          if (r.processed === 0 && r.errors.length === 0) {
             summarySlot.appendChild(el('div', { class: 'banner banner-warn', style: { marginTop: '18px' } },
-              (r && r.error) || 'Something went wrong reading those. Please try again.'));
+              'Something went wrong reading those. Please try again.'));
             return;
           }
 

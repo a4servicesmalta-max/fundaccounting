@@ -30,6 +30,20 @@ test('an unrecognised event label degrades to UNKNOWN (review), not a read failu
   }
 });
 
+test('specific unmapped labels are directed correctly, not defaulted to ACQUISITION', () => {
+  // With a share quantity present, inference used to force these to ACQUISITION —
+  // adding to a holding instead of removing/impairing it. They must map by meaning.
+  const sh = { kind: 'EVENT', investee: 'Acme S.A.', quantity: 100, amount: 50000, currency: 'EUR' };
+  assert.equal(ev({ ...sh, eventType: 'PARTIAL_REDEMPTION' }).eventType, 'DISPOSAL');
+  assert.equal(ev({ ...sh, eventType: 'PARTIAL_DISPOSAL' }).eventType, 'DISPOSAL');
+  assert.equal(ev({ ...sh, eventType: 'WRITE_DOWN' }).eventType, 'WRITE_OFF');
+  assert.equal(ev({ ...sh, eventType: 'CAPITAL_CONTRIBUTION' }).eventType, 'ACQUISITION');
+  assert.equal(ev({ ...sh, eventType: 'FOLLOW_ON' }).eventType, 'ACQUISITION');
+  const ln = { kind: 'EVENT', investee: 'Acme S.A.', principal: 100000, amount: 100000, currency: 'EUR' };
+  assert.equal(ev({ ...ln, eventType: 'BRIDGE_LOAN' }).eventType, 'LOAN_ADVANCE');
+  assert.equal(ev({ ...ln, eventType: 'COUPON' }).eventType, 'INTEREST_ACCRUAL');
+});
+
 test('valid event types are unaffected', () => {
   assert.equal(ev({ kind: 'EVENT', eventType: 'ACQUISITION', investee: 'X', quantity: 1, amount: 1, currency: 'EUR' }).eventType, 'ACQUISITION');
   assert.equal(ev({ kind: 'EVENT', eventType: 'DIVIDEND', investee: 'X', amount: 1, currency: 'EUR' }).eventType, 'DISTRIBUTION');

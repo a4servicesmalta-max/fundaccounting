@@ -172,6 +172,18 @@ function toIsoDate(s: string | undefined): string {
   return raw; // leave for the impossible-date validator downstream
 }
 
+/** Coerce a free-text instrument to the canonical SHARES|LOAN the schema accepts.
+ *  The model echoes the document's own wording ("ordinary shares", "preferred
+ *  stock", "loan note", "Umowa pożyczki"); passing that raw to a strict enum made
+ *  the WHOLE document fail to read. Loan signals are checked first so "loan stock"
+ *  is debt, while "preferred stock" stays equity. */
+function coerceInstrument(raw: unknown, isLoan: boolean): 'SHARES' | 'LOAN' {
+  const s = String(raw ?? '').toLowerCase();
+  if (/loan|promissory|debenture|debt|facility|\bbond\b|po[zż]yczk|pozyczk|obligacj/.test(s)) return 'LOAN';
+  if (/share|stock|equity|udzia|akcj|warrant|ordinary|preferen|preferred/.test(s)) return 'SHARES';
+  return isLoan ? 'LOAN' : 'SHARES';
+}
+
 /** Strong investment signals: a named investee plus either a share quantity or a
  *  loan principal, with a monetary figure. When these are present the document is
  *  a share-purchase/disposal or loan agreement even if the model hedged the kind
@@ -268,7 +280,7 @@ export function normalizeIntakeObject(raw: unknown): unknown {
   return {
     kind: 'EVENT',
     investeeName,
-    instrument: firstStr(o.instrument) ? String(o.instrument).toUpperCase() : (isLoan ? 'LOAN' : 'SHARES'),
+    instrument: coerceInstrument(o.instrument, isLoan),
     eventType,
     currency,
     txnDate,

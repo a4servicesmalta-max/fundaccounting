@@ -48,19 +48,21 @@ const RULES: Rule[] = [
   // 6100 (legal/professional) is checked before the generic fee rule so that
   // "audit fee", "legal fees" etc. land on professional fees, not bank charges.
   { code: '6100', confidence: 0.8, keywords: ['legal', 'notary', 'law', 'audit', 'accounting', 'accountant'] },
-  // 6400 (interest) is checked BEFORE the generic fee/charge rule: "interest
-  // charged" / "interest charge" contains the substring "charge" and would
-  // otherwise be mis-booked as a bank charge (6300). Interest is interest
-  // expense, not a bank charge — both are P&L, but the classification matters.
+  // Interest is sign-disambiguated: an interest INFLOW (credit, amount > 0) is
+  // interest INCOME (510), an interest OUTFLOW is interest EXPENSE (6400). Both
+  // are checked BEFORE the generic fee/charge rule, because "interest charged"
+  // contains "charge" and would otherwise be mis-booked as a bank charge (6300).
   {
-    code: '6400',
+    code: '510', // Loan interest income (REVENUE)
     confidence: 0.85,
-    keywords: [
-      // EN
-      'interest',
-      // PL: odsetki; DE: Zinsen; FR: intérêts
-      'odsetki', 'zinsen', 'interets',
-    ],
+    keywords: ['interest', 'odsetki', 'zinsen', 'interets'],
+    when: (_desc, amount) => amount > 0,
+  },
+  {
+    code: '6400', // Interest expense
+    confidence: 0.85,
+    keywords: ['interest', 'odsetki', 'zinsen', 'interets'],
+    when: (_desc, amount) => amount < 0,
   },
   {
     code: '6300',

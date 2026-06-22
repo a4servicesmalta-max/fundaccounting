@@ -15,10 +15,20 @@ test('fee / commission -> 6300', () => {
   assert.equal(categorizeTransaction({ description: 'FX commission', amount: -3 }).code, '6300');
 });
 
-test('interest -> 6400', () => {
+test('interest PAID (outflow) -> 6400 interest expense', () => {
   const r = categorizeTransaction({ description: 'Loan interest payment', amount: -100 });
   assert.equal(r.code, '6400');
   assert.ok(r.confidence >= 0.75);
+});
+
+test('interest RECEIVED (inflow) -> 510 interest income, not 6400 expense', () => {
+  // Regression: an interest CREDIT was being booked to 6400 Interest expense
+  // (an inflow of income mis-classified as an expense). The sign disambiguates:
+  // a positive "interest" line is interest income.
+  assert.equal(categorizeTransaction({ description: 'Interest credit', amount: 1800 }).code, '510');
+  assert.equal(categorizeTransaction({ description: 'Interest received from J23 loan', amount: 12400 }).code, '510');
+  // PL inflow too.
+  assert.equal(categorizeTransaction({ description: 'Odsetki', amount: 500 }).code, '510');
 });
 
 test('interest is interest even when the word "charged" appears (not a bank charge)', () => {

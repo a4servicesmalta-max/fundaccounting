@@ -44,6 +44,31 @@ const EVENT_ALIASES: Record<string, string> = {
   ACCRUED_INTEREST: 'INTEREST_ACCRUAL', INTEREST_INCOME: 'INTEREST_ACCRUAL', INTEREST_RECEIVED: 'INTEREST_ACCRUAL', COUPON: 'INTEREST_ACCRUAL',
 };
 
+// Resolve a free-text / foreign-language eventType LABEL (the model's explicit
+// direction call) to a canonical type by keyword. Applied only to the eventType
+// field — NOT the document body — because an SPA's text contains both "sale" and
+// "purchase" regardless of side; the label is the model's decision. Order matters:
+// the directional/specific events are tested before the generic ACQUISITION default.
+function eventTypeFromLabel(label: string): string | undefined {
+  const s = (label || '').toLowerCase();
+  if (!s) return undefined;
+  // Disposal: sale / transfer / redemption / buyback / divestment (EN/PL/DE/FR/IT).
+  if (/dispos|divest|redempt|buyback|buy-back|repurchas|\bsale\b|\bsell\b|cession|vendit|sprzeda|zbyci|umorz|verkauf|veräu|verau|cessione/.test(s)) return 'DISPOSAL';
+  // Loan repayment.
+  if (/repay|repaid|r[üu]ckzahl|rembours|sp[lł]at|rimbors|amortizz/.test(s)) return 'LOAN_REPAYMENT';
+  // Dividend / distribution.
+  if (/dividend|dywidend|distribut|aussch[üu]tt|distribuzione/.test(s)) return 'DISTRIBUTION';
+  // Interest income / coupon.
+  if (/interest|odsetk|\bzins|int[ée]r[êe]t|interess|coupon/.test(s)) return 'INTEREST_ACCRUAL';
+  // Impairment / write-off / write-down.
+  if (/write[- ]?off|write[- ]?down|impair|abschreib|svalutaz/.test(s)) return 'WRITE_OFF';
+  // Loan advance / grant / drawdown (loan words but not a repayment, handled above).
+  if (/\bloan\b|advance|po[zż]yczk|darlehen|\bpr[êe]t\b|prestito|disburs|drawdown/.test(s)) return 'LOAN_ADVANCE';
+  // Acquisition / subscription / capital increase / follow-on.
+  if (/acqui|purchas|\bbuy\b|subscri|capital\s*increase|aumento|kapitalerh|augmentation|nabyci|obj[ęe]ci|invest/.test(s)) return 'ACQUISITION';
+  return undefined;
+}
+
 // The canonical event types the schema accepts (the distinct alias targets). An
 // event label that isn't one of these — and can't be inferred from share/loan
 // signals — must NOT reach the strict enum (it would fail the whole read); it is
@@ -237,7 +262,8 @@ export function normalizeIntakeObject(raw: unknown): unknown {
   const o = raw as Record<string, any>;
   const kind = String(o.kind || '').toUpperCase();
   const rawEvent = String(o.eventType || o.event || o.transactionType || o.type || '').toUpperCase().replace(/[^A-Z_]/g, '_');
-  const mapped = EVENT_ALIASES[rawEvent] || EVENT_ALIASES[rawEvent.replace(/_/g, '')];
+  const mapped = EVENT_ALIASES[rawEvent] || EVENT_ALIASES[rawEvent.replace(/_/g, '')]
+    || eventTypeFromLabel(String(o.eventType ?? o.event ?? o.transactionType ?? o.type ?? ''));
   // Re-shape anything that is an investment event — either the model said so, or
   // it carries strong investment signals (investee + shares/loan + amount).
   if (kind !== 'EVENT' && !mapped && !hasInvestmentSignals(o)) return raw;

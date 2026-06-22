@@ -34,6 +34,7 @@ import { listFullChart } from '../core/chart-store';
 import { getDailyRateToEur } from '../fx/daily';
 import { functionalFromEurPerUnit } from '../fx/functional';
 import { accountName } from '../core/chart';
+import { resolveToStandardAccount } from '../core/account-resolver';
 import { loadRates } from '../fx/rates';
 import { toContent } from './extract-content';
 import { detectBundle } from '../ai/detect-bundle';
@@ -117,7 +118,9 @@ async function trySuggestJournal(
     // Convert each suggested line to EUR (engine owns the figure) and make sure
     // any account the AI proposed exists in the chart.
     const lines = s.lines.map((ln) => {
-      const acct = ensureAccount(ln.accountCode, ln.accountName);
+      // Resolve onto the STANDARD chart — never mint a new account from an AI
+    // suggestion (that polluted the trial balance with arbitrary codes).
+    const acct = resolveToStandardAccount(ln.accountCode, ln.accountName);
       return {
         accountCode: acct.code,
         accountName: acct.name || accountName(acct.code),
@@ -605,11 +608,12 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     }
 
     // 5. Build account refs for this investee/instrument. The per-investee control
-    //    sub-account is registered with the investee's name (e.g. "030-gamivo").
+    //    sub-account is registered with the investee's name (e.g. "030-gamivo") —
+    //    a deliberate per-holding sub-account the fund sub-ledger needs.
     //    A purchase/assignment of a RECEIVABLE (claim/debt) is NOT a share or loan —
-    //    its debit belongs in Other receivables (240-<debtor>), not an investment
-    //    control — so the entry is Dr 240 / Cr Bank, and it never inflates the
-    //    portfolio (which counts only 030/032).
+    //    its debit belongs in the STANDARD Accounts receivable account (1100), not a
+    //    bespoke per-debtor code — so the entry is Dr 1100 / Cr Bank, and it never
+    //    inflates the portfolio (which counts only 030/032).
     const recvText = `${intent.citation || ''} ${intent.rationale || ''} ${fileName}`.toLowerCase();
     const isReceivablePurchase =
       (intent.eventType === 'ACQUISITION' || intent.eventType === 'DISPOSAL') &&
@@ -617,19 +621,17 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     // Reuse the EXISTING holding for this investee+instrument when one is already
     // on the books (opening balance or a prior draft), so a disposal/follow-on
     // hits the same control account its carrying cost lives in. Only mint a fresh
-    // slug for a genuinely new position. (Receivables live in their own 240 space.)
+    // slug for a genuinely new position. Receivables post to the standard 1100.
     const instrPrefix = controlCodeFor(intent.instrument);
     const existingHolding = isReceivablePurchase
       ? null
       : findExistingHolding(intent.investeeName, instrPrefix, listInvestees());
     const controlCode = isReceivablePurchase
-      ? `240-${slug(intent.investeeName)}`
+      ? '1100'
       : (existingHolding?.controlCode ?? `${instrPrefix}-${slug(intent.investeeName)}`);
-    ensureAccount(
-      controlCode,
-      isReceivablePurchase ? `Receivable — ${intent.investeeName}` : intent.investeeName,
-      'ASSET',
-    );
+    // Only the deliberate per-investee investment/loan sub-account is registered;
+    // 1100 is already a standard account (ensureAccount returns it without minting).
+    ensureAccount(controlCode, isReceivablePurchase ? undefined : intent.investeeName, 'ASSET');
     const refs: FundAccountRefs = {
       controlCode,
       bankCode: '1010',

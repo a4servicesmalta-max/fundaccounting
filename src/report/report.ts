@@ -447,7 +447,14 @@ export interface BalanceSheet {
  *  current cumulative profit as retained earnings). */
 export function balanceSheet(period?: string): BalanceSheet {
   const lines = [...postedLinesAsAt(period), ...extraLedgerLinesAsAt(period)];
-  const balances = balancesFromLines(lines);
+  const raw = balancesFromLines(lines);
+  // Roll per-investee investment/loan sub-accounts up to their standard control
+  // parent (030/032) so the balance sheet presents clean standard accounts.
+  const balances = new Map<string, number>();
+  for (const [code, bal] of raw) {
+    const key = rollupForTrialBalance(code);
+    balances.set(key, round2((balances.get(key) ?? 0) + bal));
+  }
   const assets: StatementLine[] = [];
   const liabilities: StatementLine[] = [];
   const equity: StatementLine[] = [];

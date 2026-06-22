@@ -7,6 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveToStandardAccount, matchStandardByName } from './account-resolver';
+import { CHART } from './chart';
 
 test('a known standard code is used as-is', () => {
   assert.equal(resolveToStandardAccount('6100', 'whatever').code, '6100');
@@ -32,6 +33,22 @@ test('a per-investee investment/loan sub-account is KEPT (deliberate fund sub-le
 test('an unmappable account falls to 9999 suspense, never a new code', () => {
   assert.equal(resolveToStandardAccount('7200', 'Some bespoke thing the model invented').code, '9999');
   assert.equal(resolveToStandardAccount('', '').code, '9999');
+});
+
+test('GUARD: resolver never yields a non-standard account (except 030-/032- subs)', () => {
+  // Throw a wide range of codes/names the model might invent at the resolver and
+  // assert it always lands on a standard chart code or a deliberate investee sub.
+  const STANDARD = new Set(CHART.map((a) => a.code));
+  const probes: Array<[string, string]> = [
+    ['7777', 'Marketing spend'], ['8123', 'Consulting income'], ['240-foo', 'Receivable — Foo'],
+    ['', 'Mystery'], ['ABC', ''], ['999', 'Random clearing account'], ['5000', 'Cost of goods sold'],
+    ['030-newco', 'NewCo Ltd'], ['032-lender', 'Lender'], ['xyz', 'Travel & entertainment'],
+  ];
+  for (const [code, name] of probes) {
+    const r = resolveToStandardAccount(code, name);
+    const ok = STANDARD.has(r.code) || /^03[02]-/.test(r.code);
+    assert.ok(ok, `resolved ${JSON.stringify([code, name])} -> ${r.code}, which is not standard`);
+  }
 });
 
 test('matchStandardByName covers the common categories', () => {

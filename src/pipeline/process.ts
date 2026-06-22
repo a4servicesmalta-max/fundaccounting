@@ -206,6 +206,12 @@ const NON_POSTABLE = [
   // Risk-assessment / onboarding / governance papers — never accounting entries.
   /business\s*risk\s*assessment|\brisk\s*assessment\b|\bbra\b/i,
   /malta\s*business\s*registr|\bmbr\b|board\s*resolution(?!.*dividend)|register\s*of\s*(companies|members|directors|beneficial)/i,
+  // The client's OWN working papers / lead schedules (their OUTPUT, not source
+  // documents) — a financial-statement line-item breakdown must never be booked as
+  // a transaction (a "Revenue" lead schedule was posting an €11.5m phantom entry).
+  /lead\s*schedule|working\s*paper|trial\s*balance|nominal\s*ledger/i,
+  /\bfinancial\s*assets?\b|\bother\s*receivables?\b|trade\s*(and|&)\s*other\s*(payables?|receivables?)|cash\s*(and|&)\s*bank\b/i,
+  /\b(revenue|expenses)\b[^.]*\.xlsx?$/i, // a "Revenue"/"Expenses" spreadsheet is a lead schedule, not a transaction
 ];
 
 // Folder names (and strong filename prefixes) that are NEVER accounting entries,

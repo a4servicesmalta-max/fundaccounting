@@ -184,8 +184,23 @@ function hasInvestmentSignals(o: Record<string, any>): boolean {
   if (!investee) return false;
   const shares = firstNum(sf.quantity, o.quantity, o.shares, o.numberOfShares, o.noShares);
   const loan = firstNum(o.loanAmount, o.principal);
-  const money = firstNum(sf.amount, o.totalPrice, o.totalAmount, o.amount, o.totalConsideration, o.consideration, o.proceeds, o.pricePerShare, o.unitPrice, o.value, o.loanAmount, o.principal);
-  return (shares !== undefined || loan !== undefined) && money !== undefined;
+  // A share document doesn't always carry an explicit quantity — the share count
+  // may be implied by the instrument ("Series A registered shares") or share-number
+  // range. Recognise those so a share SPA the model hedged to EVIDENCE/UNKNOWN is
+  // still rescued to a typed ACQUISITION/DISPOSAL (not the free-form journal path).
+  const sharesLike = shares !== undefined
+    || o.shareNumbersFrom !== undefined || o.shareNumbersTo !== undefined || o.shareSeries !== undefined
+    || /\b(share|shares|udzia|akcj|stock|equity)\b/i.test(`${o.instrument ?? ''} ${o.documentTitle ?? o.documentType ?? ''}`);
+  // Use the SAME array-aware extraction as the main path — otherwise a share SPA
+  // whose figures are in an `amounts:[…]` array isn't recognised as having money,
+  // so it falls to the free-form suggested-journal path (which mis-books it) instead
+  // of being rescued to a clean typed ACQUISITION/DISPOSAL.
+  const money = firstNum(sf.amount, o.totalPrice, o.totalAmount, o.amount, o.totalConsideration, o.consideration, o.proceeds, o.pricePerShare, o.unitPrice, o.value, o.loanAmount, o.principal)
+    ?? pickNum([sf, o, o.amounts, o.figures, o.financials, o.details, o.terms], AMOUNT_KEYS)
+    ?? pickFromAmountArray(o.amounts)?.amount
+    ?? pickFromAmountArray(o.figures)?.amount
+    ?? pickFromAmountArray(o.lineItems)?.amount;
+  return (sharesLike || loan !== undefined) && money !== undefined;
 }
 
 export function normalizeIntakeObject(raw: unknown): unknown {

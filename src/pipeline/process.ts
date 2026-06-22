@@ -37,7 +37,7 @@ import { loadRates } from '../fx/rates';
 import { toContent } from './extract-content';
 import { carryingValueFor, disposalCarryingCost, unitsHeldFor } from '../report/positions';
 import { checkDate } from '../core/date-validate';
-import { matchInvestee } from '../core/investee-match';
+import { matchInvestee, findExistingHolding } from '../core/investee-match';
 
 
 /** Map a mime type to a file extension (fallback for files with no extension). */
@@ -517,9 +517,17 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     const isReceivablePurchase =
       (intent.eventType === 'ACQUISITION' || intent.eventType === 'DISPOSAL') &&
       /receivabl|\bclaim\b|debt purchase|assignment of receiv|factoring|cession of/.test(recvText);
+    // Reuse the EXISTING holding for this investee+instrument when one is already
+    // on the books (opening balance or a prior draft), so a disposal/follow-on
+    // hits the same control account its carrying cost lives in. Only mint a fresh
+    // slug for a genuinely new position. (Receivables live in their own 240 space.)
+    const instrPrefix = controlCodeFor(intent.instrument);
+    const existingHolding = isReceivablePurchase
+      ? null
+      : findExistingHolding(intent.investeeName, instrPrefix, listInvestees());
     const controlCode = isReceivablePurchase
       ? `240-${slug(intent.investeeName)}`
-      : `${controlCodeFor(intent.instrument)}-${slug(intent.investeeName)}`;
+      : (existingHolding?.controlCode ?? `${instrPrefix}-${slug(intent.investeeName)}`);
     ensureAccount(
       controlCode,
       isReceivablePurchase ? `Receivable — ${intent.investeeName}` : intent.investeeName,

@@ -55,3 +55,18 @@ export function matchInvestee(name: string | null | undefined, roster: InvesteeR
   }
   return best;
 }
+
+/** Resolve an event's investee to an EXISTING holding under the given instrument
+ *  control prefix ('030' equity / '032' loan). A disposal or follow-on purchase
+ *  must reuse the account the opening balance registered (e.g. "030-BSA") rather
+ *  than mint a fresh slug ("030-booste-spolka-akcyjna") — minting orphans the
+ *  carrying cost, so a sale finds carrying 0 and books the whole proceeds as
+ *  gain without removing the position. Returns null when nothing matches, so the
+ *  caller can mint a new code for a genuinely new position. */
+export function findExistingHolding(
+  investeeName: string | null | undefined,
+  prefix: '030' | '032',
+  roster: InvesteeRef[],
+): InvesteeRef | null {
+  return matchInvestee(investeeName, roster.filter((r) => r.controlCode.startsWith(prefix)));
+}

@@ -25,6 +25,8 @@ const EVENT_ALIASES: Record<string, string> = {
   SHARE_SUBSCRIPTION: 'ACQUISITION', CAPITAL_INCREASE: 'ACQUISITION', INVESTMENT: 'ACQUISITION',
   DISPOSAL: 'DISPOSAL', SHARE_DISPOSAL: 'DISPOSAL', SHARE_SALE: 'DISPOSAL', SHARES_SALE: 'DISPOSAL',
   SALE: 'DISPOSAL', SELL: 'DISPOSAL', SHARE_TRANSFER: 'DISPOSAL', SHARE_SALE_AGREEMENT: 'DISPOSAL',
+  REDEMPTION: 'DISPOSAL', SHARE_REDEMPTION: 'DISPOSAL', REDEEM: 'DISPOSAL',
+  BUYBACK: 'DISPOSAL', SHARE_BUYBACK: 'DISPOSAL', REPURCHASE: 'DISPOSAL', SHARE_REPURCHASE: 'DISPOSAL', EXIT: 'DISPOSAL',
   LOAN_ADVANCE: 'LOAN_ADVANCE', LOAN: 'LOAN_ADVANCE', LOAN_GRANTED: 'LOAN_ADVANCE', LOAN_AGREEMENT: 'LOAN_ADVANCE',
   LOAN_DISBURSEMENT: 'LOAN_ADVANCE', LOAN_PROVIDED: 'LOAN_ADVANCE', LOAN_GRANT: 'LOAN_ADVANCE',
   LOAN_REPAYMENT: 'LOAN_REPAYMENT', LOAN_REPAID: 'LOAN_REPAYMENT', REPAYMENT: 'LOAN_REPAYMENT',
@@ -32,6 +34,12 @@ const EVENT_ALIASES: Record<string, string> = {
   INTEREST_ACCRUAL: 'INTEREST_ACCRUAL', INTEREST: 'INTEREST_ACCRUAL',
   FX_REVAL: 'FX_REVAL', WRITE_OFF: 'WRITE_OFF', IMPAIRMENT: 'WRITE_OFF',
 };
+
+// The canonical event types the schema accepts (the distinct alias targets). An
+// event label that isn't one of these — and can't be inferred from share/loan
+// signals — must NOT reach the strict enum (it would fail the whole read); it is
+// degraded to UNKNOWN for review instead.
+const VALID_EVENT_TYPES = new Set(Object.values(EVENT_ALIASES));
 
 // Parse a numeric amount that may arrive as a continental- or anglo-formatted
 // string. The naive `Number(strip-non-digits)` corrupted EU formats: "1.234,56"
@@ -243,6 +251,17 @@ export function normalizeIntakeObject(raw: unknown): unknown {
       const sellsOut = /dispos|zbyci|written?\s*-?\s*off|write[- ]?off|as (the )?seller|fund[^.]{0,40}\bseller\b|seller[^.]{0,40}fund/.test(txt);
       eventType = sellsOut ? 'DISPOSAL' : 'ACQUISITION';
     }
+  }
+  // Safety net: an event label we still can't resolve to a canonical type (e.g.
+  // "CAPITAL_CALL", "RETURN_OF_CAPITAL", "CONVERSION") must not hit the strict
+  // schema enum — that would fail the entire read. Hand it on as UNKNOWN so the
+  // document is reviewed (or suggested-journalled), never dropped or mis-booked.
+  if (!VALID_EVENT_TYPES.has(eventType)) {
+    return {
+      kind: 'UNKNOWN',
+      rationale: firstStr(o.rationale, o.notes, o.summary, o.documentType, o.documentTitle) ?? '',
+      needsReview: true,
+    };
   }
   const isLoan = eventType === 'LOAN_ADVANCE' || eventType === 'LOAN_REPAYMENT';
   const investeeName = firstStr(o.investeeName, o.investee, o.company, o.companyName, o.target, o.targetCompany, o.borrower, o.counterparty, o.issuer);

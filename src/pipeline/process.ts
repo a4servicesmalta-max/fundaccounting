@@ -32,6 +32,7 @@ import { rematchAll } from '../bank/settle';
 import { suggestJournal } from '../ai/suggest-journal';
 import { listFullChart } from '../core/chart-store';
 import { getDailyRateToEur } from '../fx/daily';
+import { functionalFromEurPerUnit } from '../fx/functional';
 import { accountName } from '../core/chart';
 import { loadRates } from '../fx/rates';
 import { toContent } from './extract-content';
@@ -119,7 +120,10 @@ async function trySuggestJournal(
     }
 
     const origMax = s.lines.reduce((m, l) => Math.max(m, Math.abs(Number(l.amount) || 0)), 0);
-    const eurMax = round2(origMax * rate);
+    // Store fxRate in the canonical foreign-per-EUR convention (same as the typed
+    // event path / ECB table), not the raw EUR-per-unit rate used for the math.
+    const conv = functionalFromEurPerUnit(origMax, rate);
+    const eurMax = conv.functionalAmount;
     const now = new Date().toISOString();
     const draft: DraftRecord = {
       id: crypto.randomUUID(),
@@ -137,7 +141,7 @@ async function trySuggestJournal(
         functionalAmount: eurMax,
         currency: 'EUR',
         lineCount: lines.length,
-        fxRate: ccy === 'EUR' ? null : rate,
+        fxRate: ccy === 'EUR' ? null : conv.fxRate,
         fxRateDate: ccy === 'EUR' ? null : fx.rateDate,
         originalCurrency: ccy,
         originalAmount: origMax,

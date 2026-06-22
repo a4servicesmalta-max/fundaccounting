@@ -23,7 +23,7 @@ import {
   type DocumentRecord,
   type DraftRecord,
 } from '../db/store';
-import { extractIntent } from '../ai/claude';
+import { extractIntent, extractErrorMessage, type ExtractErrorKind } from '../ai/claude';
 import { extractBankStatement } from '../ai/extract-bank';
 import { ingestStatement } from '../bank/ingest';
 import { extractArAp } from '../ai/extract-arap';
@@ -171,6 +171,7 @@ export interface ProcessOutcome {
   draftId?: string;
   message: string;
   added?: number; // BANK: how many transactions were imported
+  aiUnavailable?: boolean; // the read failed because the AI reader was down/out of credits
 }
 
 /** A bank statement dropped into the general Documents area should be processed
@@ -347,6 +348,12 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     const intent: IntakeIntent = result.ok && result.intent
       ? result.intent
       : { kind: 'UNKNOWN', rationale: '', needsReview: true };
+    // If the read FAILED because the AI reader was unavailable (out of credits, bad
+    // key, or temporarily down) — as opposed to the model genuinely not knowing —
+    // remember why, so a document that can't be routed shows an honest reason rather
+    // than a vague "needs a look".
+    const aiUnavailable: ExtractErrorKind | undefined =
+      !result.ok && result.errorKind && result.errorKind !== 'other' ? result.errorKind : undefined;
 
     // 3. Record the AI's classification on the document.
     updateDocument(doc.id, { classification: intent.kind, note: intent.rationale ?? null });
@@ -466,8 +473,16 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
       }
     }
 
-    // 4. Non-events stop here.
+    // 4. Non-events stop here. If the document is UNKNOWN only because the AI
+    //    reader was unavailable (out of credits / bad key / down), say so plainly —
+    //    the document wasn't understood because it couldn't be READ, not because it
+    //    is unclassifiable.
     if (intent.kind !== 'EVENT') {
+      if (intent.kind === 'UNKNOWN' && aiUnavailable) {
+        const msg = extractErrorMessage(aiUnavailable) || 'The AI reader couldn’t read this document — please upload it again.';
+        updateDocument(doc.id, { classification: 'UNKNOWN', note: msg });
+        return { kind: 'UNKNOWN', fileName, documentId: doc.id, message: msg, aiUnavailable: true };
+      }
       return { kind: intent.kind, fileName, documentId: doc.id, message: intent.rationale ?? '' };
     }
 

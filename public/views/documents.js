@@ -436,7 +436,9 @@
               ? 'We couldn’t read this one — please try uploading it again.'
               : (cls === 'EVIDENCE' && d.relatedInvestee && d.note)
                 ? d.note // "Ownership evidence for <investee> — supporting document, not posted."
-                : [d.folderPath, meta.label].filter(Boolean).join(' · ');
+                : (cls === 'UNKNOWN' && d.note)
+                  ? d.note // e.g. "The AI reader is out of API credits…" — an honest reason, not a vague "needs a look".
+                  : [d.folderPath, meta.label].filter(Boolean).join(' · ');
           const right = [el('span', { class: meta.cls }, meta.label)];
           // A supporting document linked to a holding shows the investee it evidences.
           if (cls === 'EVIDENCE' && d.relatedInvestee) {

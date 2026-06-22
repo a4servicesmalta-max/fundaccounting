@@ -20,11 +20,42 @@ export interface ExtractInput {
   investees: string[];
 }
 
+/** Why an extraction failed — lets the UI tell the user a document couldn't be
+ *  READ (AI reader down / out of credits / no key) versus the model declining it. */
+export type ExtractErrorKind = 'credit' | 'auth' | 'unavailable' | 'no_text' | 'parse' | 'other';
+
 export interface ExtractResult {
   ok: boolean;
   intent?: IntakeIntent;
   error?: string;
+  errorKind?: ExtractErrorKind;
   modelUsed?: string;
+}
+
+/** Classify an API error so the UI can explain it. */
+export function classifyApiError(err: unknown): ExtractErrorKind {
+  const e = err as { status?: number; statusCode?: number; message?: string };
+  const s = e?.status ?? e?.statusCode;
+  const msg = (e?.message || '').toLowerCase();
+  if (/credit balance is too low|insufficient.*credit|billing/.test(msg)) return 'credit';
+  if (s === 401 || s === 403 || /invalid x-api-key|authentication|unauthorized|permission/.test(msg)) return 'auth';
+  if (s === 429 || s === 500 || s === 502 || s === 503 || s === 529 ||
+      /overloaded|rate.?limit|too many requests|timeout|timed out|econnreset|etimedout|socket hang|network|fetch failed/.test(msg)) {
+    return 'unavailable';
+  }
+  return 'other';
+}
+
+/** A human-friendly one-liner for an extraction failure (shown on the document). */
+export function extractErrorMessage(kind: ExtractErrorKind | undefined): string | null {
+  switch (kind) {
+    case 'credit': return 'The AI reader is out of API credits, so this document couldn’t be read. Top up your Anthropic credits and upload it again.';
+    case 'auth': return 'The AI reader couldn’t sign in (check your API key in Settings), so this document couldn’t be read. Fix the key and upload it again.';
+    case 'unavailable': return 'The AI reader is temporarily unavailable (it may be busy). This document couldn’t be read — please upload it again in a moment.';
+    case 'no_text':
+    case 'parse': return 'The AI reader couldn’t make sense of this document. Please check it’s a clear copy and upload it again.';
+    default: return null;
+  }
 }
 
 /** True when an API key is present in the environment. */
@@ -60,7 +91,7 @@ function backoffMs(attempt: number): number {
 export async function extractIntent(input: ExtractInput): Promise<ExtractResult> {
   try {
     if (!isConfigured()) {
-      return { ok: false, error: 'No ANTHROPIC_API_KEY set — add it to your .env file.' };
+      return { ok: false, error: 'No ANTHROPIC_API_KEY set — add it to your .env file.', errorKind: 'auth' };
     }
 
     const { fileName, folderPath, content, investees } = input;
@@ -120,7 +151,7 @@ export async function extractIntent(input: ExtractInput): Promise<ExtractResult>
           // Empty text (e.g. budget consumed by thinking) — retry within budget.
           lastError = 'Claude returned no text content.';
           if (attempt < MAX_ATTEMPTS - 1) { await sleep(backoffMs(attempt)); continue; }
-          return { ok: false, error: lastError, modelUsed: resp.model };
+          return { ok: false, error: lastError, errorKind: 'no_text', modelUsed: resp.model };
         }
 
         const parsed = parseIntakeResponse(text);
@@ -128,18 +159,18 @@ export async function extractIntent(input: ExtractInput): Promise<ExtractResult>
           // A malformed/short JSON can be a one-off model hiccup — retry once or twice.
           lastError = parsed.error;
           if (attempt < MAX_ATTEMPTS - 1) { await sleep(backoffMs(attempt)); continue; }
-          return { ok: false, error: parsed.error, modelUsed: resp.model };
+          return { ok: false, error: parsed.error, errorKind: 'parse', modelUsed: resp.model };
         }
 
         return { ok: true, intent: parsed.intent, modelUsed: resp.model };
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
         if (isTransient(err) && attempt < MAX_ATTEMPTS - 1) { await sleep(backoffMs(attempt)); continue; }
-        return { ok: false, error: lastError };
+        return { ok: false, error: lastError, errorKind: classifyApiError(err) };
       }
     }
-    return { ok: false, error: lastError };
+    return { ok: false, error: lastError, errorKind: 'unavailable' };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return { ok: false, error: err instanceof Error ? err.message : String(err), errorKind: classifyApiError(err) };
   }
 }

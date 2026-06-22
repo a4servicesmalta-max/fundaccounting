@@ -19,6 +19,7 @@ import {
   getSettings,
   getBooksOpeningDate,
   listInvesteeNames,
+  listInvestees,
   type DocumentRecord,
   type DraftRecord,
 } from '../db/store';
@@ -36,6 +37,7 @@ import { loadRates } from '../fx/rates';
 import { toContent } from './extract-content';
 import { carryingValueFor, disposalCarryingCost, unitsHeldFor } from '../report/positions';
 import { checkDate } from '../core/date-validate';
+import { matchInvestee } from '../core/investee-match';
 
 
 /** Map a mime type to a file extension (fallback for files with no extension). */
@@ -254,6 +256,36 @@ export function isNonPostable(documentType: string, fileName: string, folderPath
   return NON_POSTABLE.some((re) => re.test(hay));
 }
 
+/** Pull a company name out of a filename like
+ *  "F2B1 - RUBICON VENTURE LIMITED (C 94936) - Malta Business Registry extract.pdf"
+ *  → "RUBICON VENTURE LIMITED". */
+function investeeNameFromFileName(fileName: string): string {
+  let s = fileName.replace(/\.[a-z0-9]+$/i, '');
+  s = s.replace(/^\s*[A-Za-z]?\d+[A-Za-z]?\d*\s*[-–]\s*/, ''); // leading "F2B1 - "
+  s = s.split(/\s[-–]\s|_|\(/)[0]; // up to " - ", "_", "("
+  return s.trim();
+}
+
+/** A supporting document (registry extract, etc.) that concerns a KNOWN holding is
+ *  filed as ownership evidence FOR that investee — linked + clearly labelled, never
+ *  posted. Returns an enriched note + the matched investee, or nulls when no holding
+ *  matches (then the caller keeps its generic supporting-document note). */
+function supportingEvidenceLink(
+  intent: IntakeIntent,
+  fileName: string,
+): { note: string | null; investee: { name: string; controlCode: string } | null } {
+  const fromIntent = (intent as { investeeName?: string | null }).investeeName || '';
+  const candidate = fromIntent || investeeNameFromFileName(fileName);
+  const match = candidate ? matchInvestee(candidate, listInvestees()) : null;
+  if (!match) return { note: null, investee: null };
+  const qty = (intent as { sourceFigures?: { quantity?: number | null } }).sourceFigures?.quantity;
+  const shares = typeof qty === 'number' && qty > 0 ? ` (states ${qty} shares)` : '';
+  return {
+    note: `Ownership evidence for ${match.name}${shares} — supporting document, not posted.`,
+    investee: match,
+  };
+}
+
 /** lowercase, non-alphanumeric → '-', collapse + trim hyphens. */
 function slug(s: string): string {
   return s
@@ -324,8 +356,14 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     //     routing — even if the AI misread the contents as a share event. They are
     //     filed as supporting evidence and never posted or journalled.
     if (isHardNonPostable(fileName, folderPath)) {
-      const note = 'Supporting document only (registry extract / risk assessment / onboarding) — not an accounting entry.';
-      updateDocument(doc.id, { classification: 'EVIDENCE', note });
+      const link = supportingEvidenceLink(intent, fileName);
+      const note = link.note
+        || 'Supporting document only (registry extract / risk assessment / onboarding) — not an accounting entry.';
+      updateDocument(doc.id, {
+        classification: 'EVIDENCE', note,
+        relatedInvestee: link.investee?.name ?? null,
+        relatedControlCode: link.investee?.controlCode ?? null,
+      });
       return { kind: 'EVIDENCE', fileName, documentId: doc.id, message: note };
     }
 
@@ -401,8 +439,13 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     //     statements, registry extracts, confirmations, KYC, …) are NOT accounting
     //     entries — file them as supporting evidence and never post or journal them.
     if (routable && isNonPostable(documentType, fileName, folderPath)) {
-      const note = 'Supporting document only — not an accounting entry, so it was not posted.';
-      updateDocument(doc.id, { classification: 'EVIDENCE', note });
+      const link = supportingEvidenceLink(intent, fileName);
+      const note = link.note || 'Supporting document only — not an accounting entry, so it was not posted.';
+      updateDocument(doc.id, {
+        classification: 'EVIDENCE', note,
+        relatedInvestee: link.investee?.name ?? null,
+        relatedControlCode: link.investee?.controlCode ?? null,
+      });
       return { kind: 'EVIDENCE', fileName, documentId: doc.id, message: note };
     }
 

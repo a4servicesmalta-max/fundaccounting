@@ -15,6 +15,7 @@ import type {
   EngineFigures,
 } from '../core/types';
 import { resetRegistry } from '../core/chart';
+import type { InvesteeRef } from '../core/investee-match';
 
 // --- Records (CONTRACT §5) ---------------------------------------------------
 
@@ -59,6 +60,11 @@ export interface DocumentRecord {
   classification: 'EVENT' | 'EVIDENCE' | 'UNKNOWN' | 'ERROR' | 'BANK' | 'ARAP' | 'DUPLICATE';
   note: string | null;
   createdAt: string;
+  // When a supporting document (e.g. a registry extract) concerns a known holding,
+  // it is linked to that investee as ownership evidence — never posted, but no
+  // longer a disconnected "supporting document".
+  relatedInvestee?: string | null;
+  relatedControlCode?: string | null;
 }
 
 // --- Audit trail (CONTRACT: append-only, hash-chained) -----------------------
@@ -509,6 +515,27 @@ export function listInvesteeNames(): string[] {
     if (name) seen.add(name);
   }
   return [...seen];
+}
+
+/** Known holdings as {name, controlCode} — from drafts (any status) plus the
+ *  opening-balance control accounts (030-/032-). Used to link a supporting
+ *  document to the holding it is evidence for. */
+export function listInvestees(): InvesteeRef[] {
+  const byCode = new Map<string, string>(); // controlCode -> best name
+  for (const d of db.drafts) {
+    if (d.controlCode && /^03[02]/.test(d.controlCode) && d.investeeName?.trim()) {
+      byCode.set(d.controlCode, d.investeeName.trim());
+    }
+  }
+  const ob = db.openingBalance;
+  if (ob) {
+    for (const l of ob.lines) {
+      if (/^03[02]/.test(l.accountCode) && !/^032-1/.test(l.accountCode)) {
+        if (!byCode.has(l.accountCode)) byCode.set(l.accountCode, l.accountName || l.accountCode);
+      }
+    }
+  }
+  return [...byCode].map(([controlCode, name]) => ({ name, controlCode }));
 }
 
 export function insertDocument(d: DocumentRecord): void {

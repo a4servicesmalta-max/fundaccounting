@@ -334,8 +334,15 @@
             ? d.note
             : cls === 'ERROR'
               ? 'We couldn’t read this one — please try uploading it again.'
-              : [d.folderPath, meta.label].filter(Boolean).join(' · ');
+              : (cls === 'EVIDENCE' && d.relatedInvestee && d.note)
+                ? d.note // "Ownership evidence for <investee> — supporting document, not posted."
+                : [d.folderPath, meta.label].filter(Boolean).join(' · ');
           const right = [el('span', { class: meta.cls }, meta.label)];
+          // A supporting document linked to a holding shows the investee it evidences.
+          if (cls === 'EVIDENCE' && d.relatedInvestee) {
+            right.unshift(el('span', { class: 'badge blue', title: 'Ownership evidence for ' + d.relatedInvestee },
+              '↳ ' + d.relatedInvestee));
+          }
           if (d.storedPath && d.id != null) {
             right.push(el('a', {
               class: 'btn btn-ghost btn-sm',

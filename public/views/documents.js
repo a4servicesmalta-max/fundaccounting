@@ -309,7 +309,7 @@
               el('div', { style: { fontWeight: '600', fontFamily: 'var(--font-display)' } }, 'Upload documents'),
               el('div', { class: 'muted', style: { fontSize: '12px' } }, 'Statements · agreements · invoices · resolutions'))),
           el('div', { class: 'row', style: { gap: '6px' } },
-            ['PDF', 'Image', 'CSV', 'Excel', 'ZIP'].map(function (t) {
+            ['PDF', 'Word', 'Image', 'CSV', 'Excel', 'ZIP'].map(function (t) {
               return el('span', { class: 'badge muted', style: { fontSize: '11px' } }, t);
             })));
         const uploadCard = el('div', {
@@ -317,12 +317,112 @@
         }, dz);
         mount.appendChild(el('div', null, uploadHeader, uploadCard, fileInput, folderInput, summarySlot));
 
-        // --- Document list ----------------------------------------------------
+        // --- Document list + organise toolbar ---------------------------------
+        const org = { q: '', type: 'all', group: 'none', sort: 'newest' };
+        let allDocs = [];
+
         const listHead = el('div', { class: 'spread', style: { margin: '30px 0 12px' } },
-          el('h2', { class: 'section-title', style: { fontSize: '17px', margin: '0' } }, 'Recently added'),
+          el('h2', { class: 'section-title', style: { fontSize: '17px', margin: '0' } }, 'Documents'),
           el('span', { class: 'muted', id: 'docCount' }, ''));
+
+        // Type filter chips.
+        const TYPES = [
+          ['all', 'All'], ['EVENT', 'Transactions'], ['BANK', 'Bank'], ['ARAP', 'Invoices & bills'],
+          ['EVIDENCE', 'Supporting'], ['NEEDS', 'Needs a look'],
+        ];
+        const chipRow = el('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } });
+        TYPES.forEach(([key, label]) => {
+          const chip = el('button', {
+            class: 'btn btn-sm ' + (org.type === key ? 'btn-primary' : 'btn-ghost'),
+            'data-type': key,
+            onclick: () => { org.type = key; chipRow.querySelectorAll('button').forEach((b) => { b.className = 'btn btn-sm ' + (b.getAttribute('data-type') === key ? 'btn-primary' : 'btn-ghost'); }); paint(); },
+          }, label);
+          chipRow.appendChild(chip);
+        });
+
+        const search = el('input', {
+          class: 'input', type: 'search', placeholder: 'Search documents…',
+          style: { maxWidth: '240px' },
+          oninput: (e) => { org.q = (e.target.value || '').toLowerCase(); paint(); },
+        });
+        const groupSel = el('select', { class: 'input', style: { maxWidth: '170px' },
+          onchange: (e) => { org.group = e.target.value; paint(); } },
+          el('option', { value: 'none' }, 'Group: none'),
+          el('option', { value: 'type' }, 'Group: by type'),
+          el('option', { value: 'investee' }, 'Group: by company'),
+          el('option', { value: 'folder' }, 'Group: by folder'));
+        const sortSel = el('select', { class: 'input', style: { maxWidth: '150px' },
+          onchange: (e) => { org.sort = e.target.value; paint(); } },
+          el('option', { value: 'newest' }, 'Newest first'),
+          el('option', { value: 'name' }, 'Name (A–Z)'));
+
+        const toolbar = el('div', {
+          class: 'row', style: { gap: '10px', alignItems: 'center', flexWrap: 'wrap', margin: '0 0 14px' },
+        }, search, groupSel, sortSel);
+
         const listBody = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } });
-        mount.appendChild(el('div', null, listHead, listBody));
+        mount.appendChild(el('div', null, listHead, chipRow, toolbar, listBody));
+
+        // --- Filter / sort / group + render -----------------------------------
+        function classGroup(cls) {
+          if (cls === 'EVENT') return 'Transactions';
+          if (cls === 'BANK') return 'Bank statements';
+          if (cls === 'ARAP') return 'Invoices & bills';
+          if (cls === 'EVIDENCE') return 'Supporting documents';
+          if (cls === 'DUPLICATE') return 'Duplicates';
+          return 'Needs a look';
+        }
+        function matchesType(cls) {
+          if (org.type === 'all') return true;
+          if (org.type === 'NEEDS') return cls === 'UNKNOWN' || cls === 'ERROR' || cls === 'DUPLICATE';
+          return cls === org.type;
+        }
+        function paint() {
+          const countNode = document.getElementById('docCount');
+          listBody.innerHTML = '';
+          let docs = allDocs.filter((d) => {
+            const cls = String((d && d.classification) || '').toUpperCase();
+            if (!matchesType(cls)) return false;
+            if (org.q) {
+              const hay = [d.fileName, d.note, d.relatedInvestee, d.folderPath, classGroup(cls)].join(' ').toLowerCase();
+              if (!hay.includes(org.q)) return false;
+            }
+            return true;
+          });
+          docs.sort((a, b) => org.sort === 'name'
+            ? String((a && a.fileName) || '').localeCompare(String((b && b.fileName) || ''))
+            : String((b && b.createdAt) || '').localeCompare(String((a && a.createdAt) || '')));
+
+          if (countNode) countNode.textContent = docs.length
+            ? docs.length + ' of ' + allDocs.length + ' document' + (allDocs.length === 1 ? '' : 's')
+            : (allDocs.length ? '0 of ' + allDocs.length : '');
+
+          if (!docs.length) {
+            listBody.appendChild(el('div', { class: 'empty' },
+              allDocs.length ? 'No documents match this view.' : 'No documents yet — drop some above to get started.'));
+            return;
+          }
+
+          if (org.group === 'none') {
+            docs.forEach((d) => listBody.appendChild(docRow(d)));
+            return;
+          }
+          // Group into buckets.
+          const keyOf = (d) => {
+            const cls = String((d && d.classification) || '').toUpperCase();
+            if (org.group === 'type') return classGroup(cls);
+            if (org.group === 'investee') return d.relatedInvestee || '— Not linked to a company';
+            return (d.folderPath && String(d.folderPath).trim()) || '— No folder';
+          };
+          const groups = new Map();
+          docs.forEach((d) => { const k = keyOf(d); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); });
+          [...groups.keys()].sort((a, b) => a.localeCompare(b)).forEach((k) => {
+            listBody.appendChild(el('div', {
+              class: 'muted', style: { fontWeight: '600', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.04em', margin: '10px 0 2px' },
+            }, k + ' · ' + groups.get(k).length));
+            groups.get(k).forEach((d) => listBody.appendChild(docRow(d)));
+          });
+        }
 
         function docRow(d) {
           d = d || {};
@@ -407,36 +507,19 @@
 
         async function loadList() {
           const r = await FA.api('/api/documents');
-          listBody.innerHTML = '';
-
           if (r && r.error) {
+            allDocs = [];
+            listBody.innerHTML = '';
             document.getElementById('docCount').textContent = '';
             listBody.appendChild(el('div', { class: 'empty' },
               'We couldn’t load your documents just now. Please refresh and try again.'));
             return;
           }
-
-          let docs = [];
-          if (Array.isArray(r)) docs = r;
-          else if (r && Array.isArray(r.documents)) docs = r.documents;
-          else if (r && Array.isArray(r.docs)) docs = r.docs;
-
-          // Newest first.
-          docs = docs.slice().sort((a, b) =>
-            String((b && b.createdAt) || '').localeCompare(String((a && a.createdAt) || '')));
-
-          const countNode = document.getElementById('docCount');
-          if (countNode) countNode.textContent = docs.length
-            ? docs.length + ' document' + (docs.length === 1 ? '' : 's') + ' total'
-            : '';
-
-          if (!docs.length) {
-            listBody.appendChild(el('div', { class: 'empty' },
-              'No documents yet — drop some above to get started.'));
-            return;
-          }
-
-          docs.forEach((d) => listBody.appendChild(docRow(d)));
+          if (Array.isArray(r)) allDocs = r;
+          else if (r && Array.isArray(r.documents)) allDocs = r.documents;
+          else if (r && Array.isArray(r.docs)) allDocs = r.docs;
+          else allDocs = [];
+          paint();
         }
 
         await loadList();

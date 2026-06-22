@@ -2,7 +2,27 @@
 
 import * as path from 'path';
 import * as XLSX from 'xlsx';
+import AdmZip from 'adm-zip';
 import type { ExtractContent } from '../ai/claude';
+
+/** Extract readable text from a .docx (a zip of XML). Paragraphs become newlines;
+ *  tags are stripped. Returns '' on any failure so the caller can fall through. */
+function docxToText(buffer: Buffer): string {
+  try {
+    const zip = new AdmZip(buffer);
+    const entry = zip.getEntry('word/document.xml');
+    if (!entry) return '';
+    const xml = entry.getData().toString('utf8');
+    return xml
+      .replace(/<\/w:p>/g, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  } catch {
+    return '';
+  }
+}
 
 function ext(fileName: string): string {
   return path.extname(fileName).toLowerCase().replace(/^\./, '');
@@ -54,6 +74,12 @@ export function toContent(fileName: string, mime: string, buffer: Buffer): Extra
     } catch {
       return null;
     }
+  }
+
+  // Word documents → extract the text (cash confirmations, letters, memos arrive as .docx)
+  if (e === 'docx' || m === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    const text = docxToText(buffer);
+    return text ? { kind: 'text', text } : null;
   }
 
   // CSV / TXT and other plain text

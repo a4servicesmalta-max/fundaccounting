@@ -23,7 +23,7 @@ import {
   type DocumentRecord,
   type DraftRecord,
 } from '../db/store';
-import { extractIntent, extractErrorMessage, type ExtractErrorKind } from '../ai/claude';
+import { extractIntent, extractErrorMessage, type ExtractErrorKind, type ExtractContent } from '../ai/claude';
 import { extractBankStatement } from '../ai/extract-bank';
 import { ingestStatement } from '../bank/ingest';
 import { extractArAp } from '../ai/extract-arap';
@@ -182,6 +182,23 @@ function looksLikeBankStatement(documentType: string, fileName: string): boolean
   return /bank\w*\s*statement|account\s*statement|statement\s*of\s*account|historia\s*rachunku|rachunku|kontoauszug|\bbank\w*\b.*\bstatement\b|\bstatement\b.*\bbank\b|\bbs\b/.test(
     hay,
   );
+}
+
+/** Detect a bank statement from its CONTENT, independent of the file name or the
+ *  AI's classification. A statement the model mis-reads as an event/unknown (so it
+ *  carries no documentType and a non-matching name) would otherwise fall through
+ *  to the suggested-journal path and be booked as a nonsensical compound entry.
+ *  The strong tell is an account number/IBAN together with running balances or
+ *  several dated transaction lines — things a share agreement or a financial
+ *  statement do not have. PURE. */
+export function looksLikeBankStatementContent(content: ExtractContent): boolean {
+  if (content.kind !== 'text' || !content.text) return false;
+  const t = content.text.toLowerCase();
+  const hasIban = /\b[a-z]{2}\d{2}\s?(?:[a-z0-9]{4}\s?){3,}/.test(t);
+  const balances = /(opening|closing)\s*balance|saldo\s*(pocz|ko[ńn]c|otwarcia|zamkni)/.test(t);
+  const stmtWord = /account\s*statement|bank\s*statement|historia\s*rachunku|kontoauszug|statement\s*of\s*account/.test(t);
+  const datedLines = (t.match(/\b\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}\b/g) || []).length;
+  return (hasIban && (balances || stmtWord || datedLines >= 3)) || (balances && datedLines >= 3);
 }
 
 /** An invoice or supplier bill should go to the Debtors & Creditors (AR/AP)
@@ -389,10 +406,14 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     // on the file name). documentType is only present on EVIDENCE intents.
     const documentType = intent.kind === 'EVIDENCE' ? intent.documentType ?? '' : '';
     const routable = intent.kind === 'EVIDENCE' || intent.kind === 'UNKNOWN';
+    // A statement detected from its CONTENT routes to the bank pipeline even when
+    // the model mis-classified it as an event — extractBankStatement still has to
+    // parse real transactions, so a false positive simply falls through.
+    const bankByContent = looksLikeBankStatementContent(content);
     if (
-      routable &&
+      (routable || bankByContent) &&
       (content.kind === 'pdf' || content.kind === 'text') &&
-      looksLikeBankStatement(documentType, fileName)
+      (looksLikeBankStatement(documentType, fileName) || bankByContent)
     ) {
       const bank = await extractBankStatement({ fileName, content });
       if (bank.ok && bank.statements && bank.statements.length) {

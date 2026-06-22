@@ -36,6 +36,8 @@ import { functionalFromEurPerUnit } from '../fx/functional';
 import { accountName } from '../core/chart';
 import { loadRates } from '../fx/rates';
 import { toContent } from './extract-content';
+import { detectBundle } from '../ai/detect-bundle';
+import { validateBundleSegments, pdfPageCount, splitPdfByPages } from './bundle';
 import { carryingValueFor, disposalCarryingCost, unitsHeldFor } from '../report/positions';
 import { checkDate } from '../core/date-validate';
 import { matchInvestee, findExistingHolding } from '../core/investee-match';
@@ -341,6 +343,61 @@ function newDocument(
   };
 }
 
+// Coarse category → a filename hint that nudges each split sub-document toward its
+// correct route (the bank/invoice detectors also look at the file name).
+const CATEGORY_HINT: Record<string, string> = {
+  bank_statement: 'bank statement',
+  invoice: 'invoice',
+  agreement: 'agreement',
+  resolution: 'dividend resolution',
+  financial_statement: 'financial statements',
+  registry: 'registry extract',
+  other: '',
+};
+
+/**
+ * Entry point for an uploaded file. If the file is a PDF that bundles several
+ * distinct documents (different categories scanned into one file), split it into
+ * per-document sub-PDFs and process each on its own; otherwise process the file
+ * as a single document. Always returns one outcome per resulting document so the
+ * upload summary tallies each correctly.
+ */
+export async function processFileWithBundles(input: ProcessInput): Promise<ProcessOutcome[]> {
+  const isPdf =
+    /\.pdf$/i.test(input.fileName) ||
+    /pdf/i.test(input.mime || '') ||
+    (!!input.buffer && input.buffer.subarray(0, 5).toString('latin1') === '%PDF-');
+  if (isPdf) {
+    const pageCount = await pdfPageCount(input.buffer);
+    if (pageCount >= 2) {
+      const content = toContent(input.fileName, input.mime, input.buffer);
+      if (content) {
+        const det = await detectBundle({ fileName: input.fileName, content, pageCount });
+        const segments = det.ok ? validateBundleSegments(det.documents, pageCount) : [];
+        if (segments.length >= 2) {
+          const parts = await splitPdfByPages(input.buffer, segments);
+          // Only split when every segment produced a sub-PDF; otherwise process whole.
+          if (parts.length === segments.length) {
+            const base = input.fileName.replace(/\.pdf$/i, '');
+            const outcomes: ProcessOutcome[] = [];
+            for (let i = 0; i < parts.length; i++) {
+              const seg = segments[i];
+              const hint = CATEGORY_HINT[seg.category] ?? seg.category.replace(/_/g, ' ');
+              const label = seg.title || hint || `document ${i + 1}`;
+              const nm = `${base} — ${label} (p${seg.pageStart}-${seg.pageEnd}).pdf`;
+              outcomes.push(
+                await processFile({ fileName: nm, folderPath: input.folderPath, mime: 'application/pdf', buffer: parts[i] }),
+              );
+            }
+            return outcomes;
+          }
+        }
+      }
+    }
+  }
+  return [await processFile(input)];
+}
+
 export async function processFile(input: ProcessInput): Promise<ProcessOutcome> {
   const { fileName, folderPath, mime, buffer } = input;
 
@@ -410,15 +467,13 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     // on the file name). documentType is only present on EVIDENCE intents.
     const documentType = intent.kind === 'EVIDENCE' ? intent.documentType ?? '' : '';
     const routable = intent.kind === 'EVIDENCE' || intent.kind === 'UNKNOWN';
-    // A statement detected from its CONTENT routes to the bank pipeline even when
-    // the model mis-classified it as an event — extractBankStatement still has to
-    // parse real transactions, so a false positive simply falls through.
-    const bankByContent = looksLikeBankStatementContent(content);
-    if (
-      (routable || bankByContent) &&
-      (content.kind === 'pdf' || content.kind === 'text') &&
-      (looksLikeBankStatement(documentType, fileName) || bankByContent)
-    ) {
+    // Any bank-statement signal — the file name/documentType OR the content —
+    // routes to the bank pipeline even when the model mis-classified the file as an
+    // event/unknown (a split bundle page or a misread statement). extractBankStatement
+    // still has to parse real transactions, so a false positive simply falls through.
+    const bankSignal =
+      looksLikeBankStatement(documentType, fileName) || looksLikeBankStatementContent(content);
+    if (bankSignal && (content.kind === 'pdf' || content.kind === 'text')) {
       const bank = await extractBankStatement({ fileName, content });
       if (bank.ok && bank.statements && bank.statements.length) {
         // One file can hold several accounts (e.g. EUR + PLN) — ingest each.

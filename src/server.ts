@@ -34,7 +34,7 @@ import { readObject } from './storage/objects';
 import { mountAuth } from './auth/gate';
 import { listFullChart, ensureAccount, hydrateChartFromStore } from './core/chart-store';
 import { isConfigured } from './ai/claude';
-import { processFile, reclassifyDocument, type ProcessOutcome } from './pipeline/process';
+import { processFileWithBundles, reclassifyDocument, type ProcessOutcome } from './pipeline/process';
 import { approveDraft, approveAll, rejectDraft, editDraft, reverseDraft } from './posting/post';
 import { taxFlagsForDraft } from './core/tax-flags';
 import { composeFairValueRemeasurement } from './core/fair-value';
@@ -178,13 +178,13 @@ app.post('/api/upload', upload.array('files'), async (req: Request, res: Respons
             const fileName = path.basename(entryPath);
             const folderPath = path.dirname(entryPath);
             const buffer = entry.getData();
-            const outcome = await processFile({
+            const outs = await processFileWithBundles({
               fileName,
               folderPath: folderPath === '.' ? '' : folderPath,
               mime: '',
               buffer,
             });
-            outcomes.push(outcome);
+            outcomes.push(...outs);
           }
         } catch (err) {
           outcomes.push({
@@ -196,13 +196,13 @@ app.post('/api/upload', upload.array('files'), async (req: Request, res: Respons
         continue;
       }
 
-      const outcome = await processFile({
+      const outs = await processFileWithBundles({
         fileName: originalName,
         folderPath: '',
         mime: file.mimetype || '',
         buffer: file.buffer,
       });
-      outcomes.push(outcome);
+      outcomes.push(...outs);
     }
 
     const events = outcomes.filter((o) => o.kind === 'EVENT');

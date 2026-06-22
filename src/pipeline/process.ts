@@ -354,6 +354,7 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     const intent: IntakeIntent = result.ok && result.intent
       ? result.intent
       : { kind: 'UNKNOWN', rationale: '', needsReview: true };
+    const readFailed = !result.ok; // the AI couldn't read the document at all
     // If the read FAILED because the AI reader was unavailable (out of credits, bad
     // key, or temporarily down) — as opposed to the model genuinely not knowing —
     // remember why, so a document that can't be routed shows an honest reason rather
@@ -465,7 +466,7 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     // 3e. Anything else with accounting meaning (a contract, a share purchase, a
     //     receipt, a misc. document) → ask the AI to SUGGEST a journal entry and
     //     send it to Review, instead of dead-ending as inert evidence.
-    if (routable && (content.kind === 'pdf' || content.kind === 'text' || content.kind === 'image')) {
+    if (routable && !readFailed && (content.kind === 'pdf' || content.kind === 'text' || content.kind === 'image')) {
       const draftId = await trySuggestJournal(doc.id, fileName, content);
       if (draftId) {
         updateDocument(doc.id, { classification: 'EVENT', note: 'AI-suggested journal entry — review and approve.' });
@@ -484,8 +485,9 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     //    the document wasn't understood because it couldn't be READ, not because it
     //    is unclassifiable.
     if (intent.kind !== 'EVENT') {
-      if (intent.kind === 'UNKNOWN' && aiUnavailable) {
-        const msg = extractErrorMessage(aiUnavailable) || 'The AI reader couldn’t read this document — please upload it again.';
+      if (intent.kind === 'UNKNOWN' && readFailed) {
+        const msg = extractErrorMessage(aiUnavailable)
+          || 'We couldn’t fully read this document (a long or complex file can need a second try) — please upload it again.';
         updateDocument(doc.id, { classification: 'UNKNOWN', note: msg });
         return { kind: 'UNKNOWN', fileName, documentId: doc.id, message: msg, aiUnavailable: true };
       }

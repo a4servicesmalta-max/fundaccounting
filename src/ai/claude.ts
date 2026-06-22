@@ -137,7 +137,7 @@ export async function extractIntent(input: ExtractInput): Promise<ExtractResult>
         // no text (stop_reason: max_tokens). Stream to avoid timeouts on long reads.
         const stream = client.messages.stream({
           model,
-          max_tokens: 16000,
+          max_tokens: 32000, // bilingual / multi-page agreements can exhaust a smaller budget on thinking and emit no text
           thinking: { type: 'adaptive' },
           system,
           messages: [{ role: 'user', content: userContent }],

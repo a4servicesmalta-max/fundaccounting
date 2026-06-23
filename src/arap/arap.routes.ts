@@ -9,6 +9,7 @@ import multer from 'multer';
 import { insertItem, listItems, findDuplicate, updateItem, getItem } from './arap-store';
 import { taxFlagsForArap } from '../core/tax-flags';
 import { agingReport } from './aging';
+import { toEur as toEurAmount } from '../report/report';
 import { extractArAp } from '../ai/extract-arap';
 import { insertDocument, type DocumentRecord } from '../db/store';
 import { saveObject, uploadKey } from '../storage/objects';
@@ -132,7 +133,12 @@ arapRouter.post('/upload', upload.array('files'), async (req: Request, res: Resp
 arapRouter.get('/', (req: Request, res: Response) => {
   try {
     const asOf = (req.query.asOf as string) || todayISO();
-    res.json(agingReport(asOf));
+    // Convert each item to EUR (the reporting currency) using the SAME converter
+    // the general ledger uses, so a foreign-currency item — e.g. a £420 payable —
+    // is bucketed/totalled in EUR (~€506), not counted as €420.
+    const toEur = (it: { amount: number; currency: string; issueDate: string | null; dueDate: string | null }) =>
+      toEurAmount(it.amount, it.currency, it.issueDate || it.dueDate || asOf);
+    res.json(agingReport(asOf, toEur as any));
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }

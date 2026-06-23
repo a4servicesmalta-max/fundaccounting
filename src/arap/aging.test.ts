@@ -7,7 +7,7 @@ process.env.AUTOPILOT_DB = path.join(os.tmpdir(), `thcp-aging-${process.pid}-${M
 
 import { getDb, persist } from '../db/store';
 import { insertItem, listItems, getItem, markPaid, type ArApItem } from './arap-store';
-import { agingReport } from './aging';
+import { agingReport, buildSide } from './aging';
 
 // Reset the arapItems collection between scenarios so tests are independent.
 function clearItems(): void {
@@ -109,6 +109,22 @@ test('agingReport: receivables and payables are split', () => {
   assert.equal(payables.buckets.d61_90, 700);
   assert.equal(payables.buckets.current, 300);
   assert.equal(payables.byCounterparty.length, 2);
+});
+
+test('buildSide: a foreign-currency item is converted to EUR (not counted 1:1)', () => {
+  // Regression for the GBP bug: a £420 payable showed as €420 in the aging totals.
+  const mk = (o: Partial<ArApItem>): ArApItem => ({
+    id: o.id || 'x', documentId: null, kind: o.kind || 'PAYABLE', counterparty: o.counterparty || 'X',
+    amount: o.amount ?? 0, currency: o.currency || 'EUR', issueDate: '2021-07-01', dueDate: '2021-07-15',
+    status: 'OPEN', paidByTxnId: null, docName: null, createdAt: 'x',
+  } as ArApItem);
+  const toEur = (it: ArApItem) => (it.currency === 'GBP' ? Math.round(it.amount * 1.2 * 100) / 100 : it.amount);
+  const side = buildSide(
+    [mk({ counterparty: 'Ormco', amount: 420, currency: 'GBP' }), mk({ counterparty: 'Acme', amount: 100, currency: 'EUR' })],
+    '2025-01-01', toEur,
+  );
+  assert.equal(side.total, 604); // 420*1.2 + 100, NOT 520
+  assert.equal(side.byCounterparty.find((c) => c.counterparty === 'Ormco')!.buckets.d90_plus, 504);
 });
 
 test('arap-store: listItems filters by kind', () => {

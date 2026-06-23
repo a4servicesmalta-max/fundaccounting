@@ -60,14 +60,24 @@ function bucketFor(item: ArApItem, asOf: string): keyof AgingBuckets {
   return 'd90_plus';
 }
 
-function buildSide(items: ArApItem[], asOf: string): AgingSide {
+/** Convert an item's amount to the reporting currency (EUR). Default identity
+ *  (EUR items unchanged); the route injects a real FX converter so a foreign-
+ *  currency item — e.g. a £420 payable — is bucketed/totalled in EUR, consistent
+ *  with the general ledger (which already converts AR/AP to EUR). */
+export type ItemToEur = (item: ArApItem) => number;
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+export function buildSide(items: ArApItem[], asOf: string, toEur: ItemToEur = (i) => i.amount): AgingSide {
   const buckets = emptyBuckets();
   const byName = new Map<string, AgingCounterparty>();
   let total = 0;
 
   for (const item of items) {
     if (item.status !== 'OPEN') continue; // OPEN only
-    const amt = item.amount;
+    const amt = round2(toEur(item));
     const bucket = bucketFor(item, asOf);
 
     buckets[bucket] += amt;
@@ -94,8 +104,8 @@ function buildSide(items: ArApItem[], asOf: string): AgingSide {
  * Produce the aging report as at `asOf` (YYYY-MM-DD). Reads OPEN AR/AP items
  * from the store and splits them into receivables and payables.
  */
-export function agingReport(asOf: string): AgingReport {
-  const receivables = buildSide(listItems('RECEIVABLE'), asOf);
-  const payables = buildSide(listItems('PAYABLE'), asOf);
+export function agingReport(asOf: string, toEur: ItemToEur = (i) => i.amount): AgingReport {
+  const receivables = buildSide(listItems('RECEIVABLE'), asOf, toEur);
+  const payables = buildSide(listItems('PAYABLE'), asOf, toEur);
   return { receivables, payables };
 }

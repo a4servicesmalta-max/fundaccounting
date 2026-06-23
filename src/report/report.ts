@@ -39,7 +39,7 @@ function eurRate(currency: string, date: string): number {
   return chosen.rate ? 1 / chosen.rate : 1;
 }
 
-function toEur(amount: number, currency: string, date: string): number {
+export function toEur(amount: number, currency: string, date: string): number {
   return round2(amount * eurRate(currency, date));
 }
 

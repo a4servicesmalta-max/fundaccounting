@@ -39,7 +39,7 @@ import { loadRates } from '../fx/rates';
 import { toContent } from './extract-content';
 import { detectBundle } from '../ai/detect-bundle';
 import { validateBundleSegments, pdfPageCount, splitPdfByPages } from './bundle';
-import { carryingValueFor, disposalCarryingCost, unitsHeldFor } from '../report/positions';
+import { carryingValueFor, disposalCarryingCost, unitsHeldFor, assessDisposalCarrying } from '../report/positions';
 import { checkDate } from '../core/date-validate';
 import { matchInvestee, findExistingHolding } from '../core/investee-match';
 
@@ -691,6 +691,7 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     //    known; otherwise it falls back to the full carrying value.
     let carryingCostFunctional: number | undefined;
     let note: string | null = null;
+    let carryingUnverified = false;
     if (intent.eventType === 'DISPOSAL' || intent.eventType === 'WRITE_OFF') {
       const fullCarrying = carryingValueFor(controlCode);
       const qtySold = intent.sourceFigures?.quantity ?? null;
@@ -700,14 +701,15 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
         intent.eventType === 'DISPOSAL'
           ? disposalCarryingCost(controlCode, qtySold)
           : fullCarrying;
-      if (fullCarrying === 0) {
-        note = 'Carrying cost is 0/unknown for this position — please review before posting.';
-      } else if (
-        intent.eventType === 'DISPOSAL' &&
-        typeof qtySold === 'number' && qtySold > 0 && unitsHeld > 0 && qtySold < unitsHeld
-      ) {
-        note = `Partial disposal: ${qtySold} of ${unitsHeld} units — released ${carryingCostFunctional} of ${fullCarrying} carrying cost. Please review.`;
-      }
+      const assess = assessDisposalCarrying(
+        intent.eventType,
+        qtySold,
+        unitsHeld,
+        fullCarrying,
+        carryingCostFunctional ?? fullCarrying,
+      );
+      note = assess.note;
+      carryingUnverified = assess.forceReview;
     }
 
     // 6b. Impossible event date (trap T2): an out-of-range day (e.g. 31 Feb) would
@@ -766,8 +768,9 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
       sourceFigures: composition.sourceFigures,
       engineFigures: composition.engineFigures,
       lines: composition.engineLines,
-      // An impossible date or an unreadable amount forces per-line review.
-      confidence: (dateImpossible || zeroAmount) ? Math.min(intent.confidence ?? 0.6, 0.3) : intent.confidence,
+      // An impossible date, an unreadable amount, or an unverifiable disposal carrying
+      // cost forces per-line review (held below the bulk-approve bar).
+      confidence: (dateImpossible || zeroAmount || carryingUnverified) ? Math.min(intent.confidence ?? 0.6, 0.3) : intent.confidence,
       citation: intent.citation,
       rationale: note ? `${intent.rationale} (${note})` : intent.rationale,
       docName: fileName,

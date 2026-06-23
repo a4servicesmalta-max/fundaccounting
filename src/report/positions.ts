@@ -62,6 +62,53 @@ export function disposalCarryingCost(controlCode: string, qtySold: number | null
   return totalCarrying;
 }
 
+export interface DisposalCarryingAssessment {
+  /** Reviewer-facing note, or null when nothing needs saying. */
+  note: string | null;
+  /** True when the released carrying cost can't be verified, so the draft must be
+   *  held below the bulk-approve bar for a human to confirm. */
+  forceReview: boolean;
+}
+
+/**
+ * Decide whether a disposal's released carrying cost is trustworthy or needs review.
+ *
+ * The dangerous case: a disposal states a sold quantity but the holding's unit count
+ * isn't on the books (`unitsHeld === 0` — typical of an imported opening balance).
+ * disposalCarryingCost then can't proportion and releases the FULL carrying, so a
+ * partial sale would overstate the cost of sale. We can't tell partial from full, so
+ * we flag it AND force review. A partial sale with KNOWN units is correctly
+ * proportioned (informational note only); a full sale or a quantity-less disposal is
+ * the normal path.
+ */
+export function assessDisposalCarrying(
+  eventType: 'DISPOSAL' | 'WRITE_OFF',
+  qtySold: number | null | undefined,
+  unitsHeld: number,
+  fullCarrying: number,
+  releasedCarrying: number,
+): DisposalCarryingAssessment {
+  if (fullCarrying === 0) {
+    return { note: 'Carrying cost is 0/unknown for this position — please review before posting.', forceReview: false };
+  }
+  const sold = Number(qtySold);
+  if (eventType === 'DISPOSAL' && Number.isFinite(sold) && sold > 0) {
+    if (unitsHeld > 0 && sold < unitsHeld) {
+      return {
+        note: `Partial disposal: ${sold} of ${unitsHeld} units — released ${releasedCarrying} of ${fullCarrying} carrying cost. Please review.`,
+        forceReview: false,
+      };
+    }
+    if (unitsHeld === 0) {
+      return {
+        note: `Sold ${sold} units, but this holding's unit count isn't recorded (e.g. an imported opening balance), so the FULL carrying cost of ${fullCarrying} was released. If this was a partial sale the cost of sale is overstated — confirm the units held and adjust before posting.`,
+        forceReview: true,
+      };
+    }
+  }
+  return { note: null, forceReview: false };
+}
+
 /** Net balance per account code across all POSTED lines (positive = debit). */
 export function postedBalancesByAccount(): Map<string, number> {
   const map = new Map<string, number>();

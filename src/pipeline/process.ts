@@ -242,12 +242,16 @@ function looksLikeInvoice(documentType: string, fileName: string): boolean {
 export function looksLikeInvoiceContent(content: ExtractContent): boolean {
   if (content.kind !== 'text' || !content.text) return false;
   const t = content.text.toLowerCase();
-  // Invoice/bill OR an invoice-equivalent (fee note, statement of fees, debit
-  // note, request for payment). 'statement of fees' / 'fee statement' are matched
-  // specifically so a bank/financial STATEMENT is not a false positive.
-  const invWord = /\binvoice\b|faktura|rechnung|facture|fattura|\bbill\b|(credit|debit)\s*note|fee\s*(note|statement)|statement\s*of\s*fees?|request\s*for\s*payment/.test(t);
-  const marker = /amount\s*(due|payable|owed|to\s*us)|total\s*due|\bdue\s*date|invoice\s*(no|number|#)|payment\s*due/.test(t);
-  return invWord && marker;
+  // Strong, unambiguous invoice nouns — the word "invoice" across EN/PL/IT/DE/FR/NL
+  // — are an invoice on their own (a foreign invoice often has no English marker).
+  const strongInvWord = /\binvoice\b|faktura|fattura|rechnung|facture|factuur/.test(t);
+  // Weaker terms that also appear elsewhere — require an amount/due marker. ('fee
+  // statement' / 'statement of fees' are matched specifically so a bank/financial
+  // STATEMENT is not a false positive.)
+  const weakInvWord = /\bbill\b|(credit|debit)\s*note|fee\s*(note|statement)|statement\s*of\s*fees?|request\s*for\s*payment/.test(t);
+  // Amount-due / due-date / invoice-number markers — EN plus IT/FR/DE/PL.
+  const marker = /amount\s*(due|payable|owed|to\s*us)|total\s*due|\bdue\s*date|invoice\s*(no|number|#)|payment\s*due|importo|dovut|scadenz|montant|[ée]ch[ée]anc|betrag|f[äa]llig|kwota|zap[lł]at|p[lł]atno/.test(t);
+  return strongInvWord || (weakInvWord && marker);
 }
 
 // Documents that are NOT accounting entries — audited reports, statutory/registry

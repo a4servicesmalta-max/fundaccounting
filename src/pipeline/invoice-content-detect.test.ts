@@ -15,6 +15,12 @@ test('a fund-issued invoice is detected from its content', () => {
   }), true);
 });
 
+test('foreign-language invoices are detected (Italian Fattura, French Facture, German Rechnung)', () => {
+  assert.equal(looksLikeInvoiceContent({ kind: 'text', text: 'FATTURA n. IT-2025-44 Fornitore: Studio Legale. Scadenza: 04 aprile 2025 Importo dovuto: EUR 3.500,00' }), true);
+  assert.equal(looksLikeInvoiceContent({ kind: 'text', text: 'FACTURE n. FR-9 Fournisseur: Cabinet. Échéance: 04 avril 2025 Montant dû: EUR 2.000' }), true);
+  assert.equal(looksLikeInvoiceContent({ kind: 'text', text: 'RECHNUNG Nr. CH-90 Lieferant: Helvetia. Fälligkeit: 18 März 2025 Betrag fällig: CHF 2.000' }), true);
+});
+
 test('a fund-issued fee note / statement of fees is detected (no "invoice" word)', () => {
   assert.equal(looksLikeInvoiceContent({
     kind: 'text',

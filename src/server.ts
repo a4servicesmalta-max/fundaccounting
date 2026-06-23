@@ -26,8 +26,6 @@ import {
   listAudit,
   verifyAudit,
   listLockedPeriods,
-  lockPeriod,
-  unlockPeriod,
 } from './db/store';
 import { ensureRatesSeeded } from './fx/rates';
 import { readObject } from './storage/objects';
@@ -35,7 +33,7 @@ import { mountAuth } from './auth/gate';
 import { listFullChart, ensureAccount, hydrateChartFromStore } from './core/chart-store';
 import { isConfigured } from './ai/claude';
 import { processFileWithBundles, reclassifyDocument, type ProcessOutcome } from './pipeline/process';
-import { approveDraft, approveAll, rejectDraft, editDraft, reverseDraft } from './posting/post';
+import { approveDraft, approveAll, rejectDraft, editDraft, reverseDraft, closePeriod, reopenPeriod } from './posting/post';
 import { taxFlagsForDraft } from './core/tax-flags';
 import { composeFairValueRemeasurement } from './core/fair-value';
 import { portfolio, ledger, trialBalance, exportCsv, profitAndLoss, balanceSheet, navAllocation } from './report/report';
@@ -309,12 +307,9 @@ app.post('/api/period-locks', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Period must be in YYYY-MM format.' });
   }
   const action = (req.body?.action ?? 'lock').toString();
-  if (action === 'unlock') {
-    unlockPeriod(period);
-  } else {
-    lockPeriod(period);
-  }
-  res.json({ locked: listLockedPeriods() });
+  const actor = (req.body?.actor as string) || 'reviewer';
+  const locked = action === 'unlock' ? reopenPeriod(period, actor) : closePeriod(period, actor);
+  res.json({ locked });
 });
 
 // --- Fair-value remeasurement (trap T7 / IFRS9 FVTPL) ------------------------

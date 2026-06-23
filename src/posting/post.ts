@@ -10,6 +10,9 @@ import {
   insertDraft,
   appendAudit,
   isPeriodLocked,
+  lockPeriod,
+  unlockPeriod,
+  listLockedPeriods,
   getSettings,
   type DraftRecord,
 } from '../db/store';
@@ -156,6 +159,40 @@ export function editDraft(
     after: clean,
   });
   return updated;
+}
+
+// --- Period close / reopen (audited control actions) -------------------------
+
+/** Close (lock) a period and record it on the immutable audit trail. Locking an
+ *  already-locked period is a no-op (no duplicate audit entry). Returns the locked set. */
+export function closePeriod(period: string, actor = 'system'): string[] {
+  if (isPeriodLocked(period)) return listLockedPeriods();
+  lockPeriod(period);
+  appendAudit({
+    action: 'PERIOD_LOCK',
+    entity: 'period',
+    entityId: period,
+    actor,
+    summary: `Closed (locked) period ${period}`,
+    after: { locked: true },
+  });
+  return listLockedPeriods();
+}
+
+/** Reopen (unlock) a period and record it on the audit trail — reopening a closed
+ *  period is privileged and must be tamper-evident. No-op if it wasn't locked. */
+export function reopenPeriod(period: string, actor = 'system'): string[] {
+  if (!isPeriodLocked(period)) return listLockedPeriods();
+  unlockPeriod(period);
+  appendAudit({
+    action: 'PERIOD_UNLOCK',
+    entity: 'period',
+    entityId: period,
+    actor,
+    summary: `Reopened (unlocked) period ${period}`,
+    after: { locked: false },
+  });
+  return listLockedPeriods();
 }
 
 // --- Reversal (POSTED entries; correction never deletes) ---------------------

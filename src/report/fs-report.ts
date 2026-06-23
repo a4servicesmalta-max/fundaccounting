@@ -11,18 +11,41 @@ import {
   portfolio,
   type StatementLine,
 } from './report';
+import { listPostedLines, getBooksOpeningDate } from '../db/store';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-function periodLabel(period?: string): string {
-  if (!period || period === 'all' || !/^\d{4}-\d{2}$/.test(period)) return 'the period ended to date';
-  const [y, m] = period.split('-');
-  return `the period ended ${MONTHS[Number(m) - 1]} ${y}`;
+/** The reporting year + period label for the statements. A financial statement must
+ *  be dated to the period it reports, NEVER to the wall clock. With an explicit period
+ *  we use it; otherwise (the cumulative "to date" view) we derive the year from the
+ *  books — the latest posted period, then the books opening date — and only fall back
+ *  to the current year for a genuinely empty book. */
+export function deriveReportingPeriod(
+  explicit: string | undefined,
+  latestPostedPeriod: string | null,
+  openingDate: string | null,
+): { year: string; label: string } {
+  const fromPeriod = (p: string) => ({
+    year: p.slice(0, 4),
+    label: `the period ended ${MONTHS[Number(p.split('-')[1]) - 1]} ${p.slice(0, 4)}`,
+  });
+  if (explicit && /^\d{4}-\d{2}$/.test(explicit)) return fromPeriod(explicit);
+  if (latestPostedPeriod && /^\d{4}-\d{2}$/.test(latestPostedPeriod)) return fromPeriod(latestPostedPeriod);
+  if (openingDate && /^\d{4}-\d{2}-\d{2}$/.test(openingDate)) {
+    const y = openingDate.slice(0, 4);
+    return { year: y, label: `the period ended to date (${y})` };
+  }
+  return { year: String(new Date().getUTCFullYear()), label: 'the period ended to date' };
 }
 
-function yearOf(period?: string): string {
-  if (period && /^\d{4}-\d{2}$/.test(period)) return period.slice(0, 4);
-  return String(new Date().getUTCFullYear());
+/** Latest period (YYYY-MM) that carries any posted ledger line, or null. */
+function latestPostedPeriod(): string | null {
+  let max: string | null = null;
+  for (const l of listPostedLines()) {
+    const p = l.period;
+    if (p && /^\d{4}-\d{2}$/.test(p) && (max === null || p > max)) max = p;
+  }
+  return max;
 }
 
 function money(n: number): string {
@@ -71,8 +94,9 @@ export function buildFsReportHtml(period?: string, entityOrInfo?: string | FsCom
   const bs = balanceSheet(period);
   const tb = trialBalance(period);
   const pf = portfolio(period);
-  const lbl = periodLabel(period);
-  const yr = yearOf(period);
+  const rp = deriveReportingPeriod(period, latestPostedPeriod(), getBooksOpeningDate());
+  const lbl = rp.label;
+  const yr = rp.year;
   const ccy = info.functionalCurrency || 'EUR';
   const profitWord = pl.netProfit >= 0 ? 'Profit for the financial period' : 'Loss for the financial period';
 

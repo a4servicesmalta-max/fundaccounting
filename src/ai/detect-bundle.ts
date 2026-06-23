@@ -7,6 +7,7 @@
 // chopped up.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { withRetry } from './retry';
 import { z } from 'zod';
 import type { ExtractContent } from './claude';
 
@@ -104,14 +105,13 @@ const defaultCaller: StructuredCaller = async ({ system, user, content }) => {
     });
   }
   // Segmentation is a light task (page boundaries only) — a modest budget is enough.
-  const stream = client.messages.stream({
+  const resp = await withRetry(() => client.messages.stream({
     model,
     max_tokens: 6000,
     thinking: { type: 'adaptive' },
     system,
     messages: [{ role: 'user', content: userContent }],
-  });
-  const resp = await stream.finalMessage();
+  }).finalMessage());
   const textBlock = resp.content.find((b) => b.type === 'text');
   const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
   return { text, modelUsed: resp.model };

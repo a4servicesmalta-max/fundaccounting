@@ -10,6 +10,7 @@
 // extractor, zod validation, and never-throw error handling.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { withRetry } from './retry';
 import { z } from 'zod';
 import type { ExtractContent } from './claude';
 
@@ -168,14 +169,13 @@ const defaultCaller: StructuredCaller = async ({ system, user, content }) => {
   // and STREAM (the SDK helper assembles the final message) to avoid request
   // timeouts on a careful read of an unusual document. A small budget here
   // silently truncates to an empty/invalid response (stop_reason: max_tokens).
-  const stream = client.messages.stream({
+  const resp = await withRetry(() => client.messages.stream({
     model,
     max_tokens: 8000,
     thinking: { type: 'adaptive' },
     system,
     messages: [{ role: 'user', content: userContent }],
-  });
-  const resp = await stream.finalMessage();
+  }).finalMessage());
 
   // Skip non-text blocks (e.g. thinking blocks) and read the first text block.
   const textBlock = resp.content.find((b) => b.type === 'text');

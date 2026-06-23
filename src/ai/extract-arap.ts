@@ -6,6 +6,7 @@
 // PAYABLE    = a bill/supplier invoice the FUND RECEIVED (money the fund OWES).
 
 import Anthropic from '@anthropic-ai/sdk';
+import { withRetry } from './retry';
 import { z } from 'zod';
 import type { ExtractContent } from './claude';
 
@@ -118,14 +119,13 @@ const defaultCaller: StructuredCaller = async ({ system, user, content }) => {
 
   // Generous budget + streaming: adaptive thinking draws from the output budget,
   // so a small max_tokens can be fully consumed by thinking, yielding no text.
-  const stream = client.messages.stream({
+  const resp = await withRetry(() => client.messages.stream({
     model,
     max_tokens: 8000,
     thinking: { type: 'adaptive' },
     system,
     messages: [{ role: 'user', content: userContent }],
-  });
-  const resp = await stream.finalMessage();
+  }).finalMessage());
 
   // Skip non-text blocks (e.g. thinking blocks) and read the first text block.
   const textBlock = resp.content.find((b) => b.type === 'text');

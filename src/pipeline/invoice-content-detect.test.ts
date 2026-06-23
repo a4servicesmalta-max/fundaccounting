@@ -15,6 +15,22 @@ test('a fund-issued invoice is detected from its content', () => {
   }), true);
 });
 
+test('a fund-issued fee note / statement of fees is detected (no "invoice" word)', () => {
+  assert.equal(looksLikeInvoiceContent({
+    kind: 'text',
+    text: 'STATEMENT OF FEES No. THCP-FEE-7 (issued by the fund)\nTo: Borealis Ventures LLC\nDue date: 06 March 2025\nAmount due to us: USD 8,000.00 for advisory services rendered.',
+  }), true);
+  // a "debit note" is also an invoice-equivalent
+  assert.equal(looksLikeInvoiceContent({
+    kind: 'text', text: 'DEBIT NOTE DN-12. Amount due: EUR 1,200. Payment due within 30 days.',
+  }), true);
+});
+
+test('a financial statement / bank statement is NOT detected (no false positive on "statement")', () => {
+  assert.equal(looksLikeInvoiceContent({ kind: 'text', text: 'Statement of financial position as at 31 December 2024. Total assets 5,000,000. Amount: balance.' }), false);
+  assert.equal(looksLikeInvoiceContent({ kind: 'text', text: 'SANTANDER account statement. Opening balance 800,000. Closing balance 803,050 as at due period.' }), false);
+});
+
 test('a supplier bill is detected from its content', () => {
   assert.equal(looksLikeInvoiceContent({
     kind: 'text',

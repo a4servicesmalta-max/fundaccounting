@@ -242,7 +242,10 @@ function looksLikeInvoice(documentType: string, fileName: string): boolean {
 export function looksLikeInvoiceContent(content: ExtractContent): boolean {
   if (content.kind !== 'text' || !content.text) return false;
   const t = content.text.toLowerCase();
-  const invWord = /\binvoice\b|faktura|rechnung|facture|fattura|\bbill\b|credit\s*note/.test(t);
+  // Invoice/bill OR an invoice-equivalent (fee note, statement of fees, debit
+  // note, request for payment). 'statement of fees' / 'fee statement' are matched
+  // specifically so a bank/financial STATEMENT is not a false positive.
+  const invWord = /\binvoice\b|faktura|rechnung|facture|fattura|\bbill\b|(credit|debit)\s*note|fee\s*(note|statement)|statement\s*of\s*fees?|request\s*for\s*payment/.test(t);
   const marker = /amount\s*(due|payable|owed|to\s*us)|total\s*due|\bdue\s*date|invoice\s*(no|number|#)|payment\s*due/.test(t);
   return invWord && marker;
 }
@@ -416,7 +419,10 @@ export async function processFileWithBundles(input: ProcessInput): Promise<Proce
             for (let i = 0; i < parts.length; i++) {
               const seg = segments[i];
               const hint = CATEGORY_HINT[seg.category] ?? seg.category.replace(/_/g, ' ');
-              const label = seg.title || hint || `document ${i + 1}`;
+              // Include BOTH the title and the detected-category hint so the per-
+              // document routing (bank/invoice detection keys on the file name) sees
+              // the bundle's classification even when the title lacks the keyword.
+              const label = [seg.title, hint].map((s) => (s || '').trim()).filter(Boolean).join(' — ') || `document ${i + 1}`;
               const nm = `${base} — ${label} (p${seg.pageStart}-${seg.pageEnd}).pdf`;
               outcomes.push(
                 await processFile({ fileName: nm, folderPath: input.folderPath, mime: 'application/pdf', buffer: parts[i] }),

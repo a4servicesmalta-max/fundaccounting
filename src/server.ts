@@ -38,7 +38,7 @@ import { processFileWithBundles, reclassifyDocument, type ProcessOutcome } from 
 import { approveDraft, approveAll, rejectDraft, editDraft, reverseDraft } from './posting/post';
 import { taxFlagsForDraft } from './core/tax-flags';
 import { composeFairValueRemeasurement } from './core/fair-value';
-import { portfolio, ledger, trialBalance, exportCsv, profitAndLoss, balanceSheet } from './report/report';
+import { portfolio, ledger, trialBalance, exportCsv, profitAndLoss, balanceSheet, navAllocation } from './report/report';
 import { buildFsReportHtml } from './report/fs-report';
 import { bankRouter } from './bank/bank.routes';
 import { arapRouter } from './arap/arap.routes';
@@ -555,12 +555,9 @@ app.get('/api/overview', (_req: Request, res: Response) => {
 
     // Allocation: each position as a % of NAV. The NAV denominator carries equity at
     // valuation (revalued) and loans at carrying, so the numerator must use the same
-    // basis (revalued-or-carrying) — otherwise percentages computed on cost over a
-    // fair-value NAV wouldn't sum to ~100 once anything is revalued.
-    const allocation = holdings.map((h) => {
-      const v = h.revalued != null ? h.revalued : h.value;
-      return { name: h.name, value: v, pct: nav ? Math.round((v / nav) * 1000) / 10 : 0 };
-    });
+    // basis — equity revalued, loans at carrying — otherwise the percentages don't sum
+    // to ~100 once a foreign loan's revalued figure is populated. (See navAllocation.)
+    const allocation = navAllocation(holdings, nav);
 
     // Recent documents: latest drafts, newest first.
     const recentDocuments = [...listDrafts()]

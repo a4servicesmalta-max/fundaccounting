@@ -317,6 +317,35 @@ export function portfolio(period?: string): PortfolioReport {
   return report;
 }
 
+export interface AllocationHolding {
+  name: string;
+  kind: string; // 'LOAN' | 'EQUITY'
+  value: number; // carrying amount
+  revalued: number | null; // closing-FX / fair value, or null when not revalued
+}
+
+export interface AllocationSlice {
+  name: string;
+  value: number;
+  pct: number;
+}
+
+/**
+ * Portfolio allocation (each holding as a % of NAV). The NAV the dashboard reports
+ * carries EQUITY at valuation (revalued) and LOANS at carrying amount — the two are
+ * deliberately kept on different bases. The allocation numerator must use the SAME
+ * basis as that NAV denominator, otherwise the percentages don't sum to 100: a loan
+ * whose foreign carrying value has a populated `revalued` figure would be counted at
+ * the revalued amount over a NAV that only held it at carrying. So: loans use carrying
+ * (`value`), equity uses revalued-or-carrying.
+ */
+export function navAllocation(holdings: AllocationHolding[], nav: number): AllocationSlice[] {
+  return holdings.map((h) => {
+    const v = h.kind === 'LOAN' ? h.value : h.revalued != null ? h.revalued : h.value;
+    return { name: h.name, value: v, pct: nav ? Math.round((v / nav) * 1000) / 10 : 0 };
+  });
+}
+
 // --- Ledger ------------------------------------------------------------------
 
 export function ledger(period?: string): { lines: PostedLineRow[] } {

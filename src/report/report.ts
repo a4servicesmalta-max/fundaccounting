@@ -8,6 +8,7 @@ import { listDrafts, listPostedLines, getFxRate, type DraftRecord, type PostedLi
 import { loadRates } from '../fx/rates';
 import { listTransactions, listAccounts } from '../bank/bank-store';
 import { listItems } from '../arap/arap-store';
+import { unitsHeldFor } from './positions';
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -152,20 +153,58 @@ function periodEndDate(period?: string): string {
 }
 
 /** Net cost in the holding's own currency (acquisitions less disposals/write-offs). */
-function originalCostFor(controlCode: string): { amount: number; currency: string } {
-  let amount = 0;
+/**
+ * Foreign-currency cost base for the CURRENTLY-held position — used to retranslate
+ * the holding at closing FX in the portfolio revaluation column.
+ *
+ * Each draft's `originalAmount` means a DIFFERENT thing per event (cost / proceeds /
+ * advance / repayment), so it can't be summed with a blanket ± sign. Instead:
+ *   - EQUITY (030): average cost. Total acquired cost scaled by the fraction of units
+ *     STILL HELD (mirrors disposalCarryingCost — cost flows out pro-rata by units). A
+ *     DISPOSAL's originalAmount is PROCEEDS, so it must never be subtracted from cost.
+ *   - LOAN (032): principal = advances NET OF repayments (in original currency).
+ *   - WRITE_OFF: nil.
+ *   - FV_REMEAS: ignored (adjusts carrying value, not the cost base).
+ */
+export function originalCostFor(controlCode: string): { amount: number; currency: string } {
   let currency = 'EUR';
+  let acqCost = 0; // equity: total acquired original cost (foreign)
+  let acqUnits = 0; // equity: total acquired units
+  let principal = 0; // loans: advances - repayments (foreign)
+  let writtenOff = false;
   for (const d of listDrafts('POSTED')) {
     if (d.controlCode !== controlCode) continue;
-    // A fair-value remeasurement adjusts carrying value, not original cost — so it
-    // must NOT change the cost base used for the revaluation column.
     if (d.eventType === 'FV_REMEAS') continue;
     const orig = Number(d.engineFigures?.originalAmount) || 0;
-    currency = d.engineFigures?.originalCurrency || d.currency || 'EUR';
-    if (d.eventType === 'DISPOSAL' || d.eventType === 'WRITE_OFF') amount -= orig;
-    else amount += orig;
+    switch (d.eventType) {
+      case 'ACQUISITION':
+        acqCost += orig;
+        acqUnits += Math.abs(Number(d.sourceFigures?.quantity) || 0);
+        currency = d.engineFigures?.originalCurrency || d.currency || currency;
+        break;
+      case 'LOAN_ADVANCE':
+        principal += orig;
+        currency = d.engineFigures?.originalCurrency || d.currency || currency;
+        break;
+      case 'LOAN_REPAYMENT':
+        principal -= orig;
+        break;
+      case 'WRITE_OFF':
+        writtenOff = true;
+        break;
+      default:
+        // DISPOSAL (proceeds, not cost) and all other events leave the cost base to
+        // be derived from units still held / principal net of repayments.
+        break;
+    }
   }
-  return { amount: round2(amount), currency };
+  if (writtenOff) return { amount: 0, currency };
+  if (/^032/.test(controlCode)) return { amount: round2(principal), currency };
+  if (acqUnits > 0) {
+    const held = Math.max(0, Math.min(unitsHeldFor(controlCode), acqUnits));
+    return { amount: round2((acqCost * held) / acqUnits), currency };
+  }
+  return { amount: round2(acqCost), currency };
 }
 
 export interface PortfolioTotal {

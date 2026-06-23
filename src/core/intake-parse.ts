@@ -84,8 +84,11 @@ const VALID_EVENT_TYPES = new Set(Object.values(EVENT_ALIASES));
 function toNum(v: unknown): number | undefined {
   if (typeof v === 'number') return isFinite(v) ? v : undefined;
   if (typeof v !== 'string') return undefined;
-  let s = v.replace(/[^0-9.,\-]/g, '');
-  if (!s) return undefined;
+  // Take the FIRST numeric token only. A value like "300 (of 1,000 held)" must yield
+  // 300 — not 3001000 from stripping the delimiters and concatenating every digit run.
+  const m = v.match(/-?[.,]?\d[\d.,]*/);
+  if (!m) return undefined;
+  let s = m[0];
   const neg = s.startsWith('-');
   s = s.replace(/-/g, '');
   if (!s) return undefined;

@@ -34,6 +34,21 @@ test('parses anglo and continental number formats correctly', () => {
   }
 });
 
+test('a value containing two numbers takes the FIRST token (no digit-run concatenation)', () => {
+  // Live failure: a disposal stated "Quantity sold: 300 shares (of 1,000 originally
+  // held)"; toNum stripped non-digits to "3001,000" and collapsed it to 3001000 — a
+  // 3-million-share quantity that silently turned a partial sale into an over-disposal.
+  assert.equal(amountOf('300 (of 1,000 originally held)'), 300);
+  assert.equal(amountOf('40,000.00 cash proceeds'), 40000);
+  assert.equal(amountOf('approx 1.234,56 EUR (net of fees)'), 1234.56);
+  // The quantity field flows through the same coercion and must be 300, not 3001000.
+  const o = normalizeIntakeObject({
+    kind: 'EVENT', eventType: 'DISPOSAL', investee: 'Gamivo',
+    sourceFigures: { amount: 40000, quantity: '300 (of 1,000 held)' },
+  }) as { sourceFigures?: { quantity?: unknown } };
+  assert.equal(o.sourceFigures?.quantity, 300);
+});
+
 test('the partial-disposal share-purchase example parses to the full figure', () => {
   // A bilingual SPA might state the total as "2.500.000,00".
   assert.equal(amountOf('2.500.000,00'), 2500000);

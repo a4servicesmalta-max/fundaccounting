@@ -295,7 +295,13 @@
       style: { width: '100%', minHeight: '150px', fontFamily: 'var(--font-mono, monospace)', fontSize: '12.5px', resize: 'vertical' },
     });
     ta.value = '';
-    ta.placeholder = 'Paste your trial balance (CSV)…\n\nCode,Account,Debit,Credit\n1010,Bank,10000,\n030,Investments,5000,\n2300,Loan payable,,3000\n3000,Share capital,,12000';
+    ta.placeholder = 'Paste your trial balance (CSV)…\n\n'
+      + 'Code,Account,Debit,Credit\n'
+      + '1010,Bank,250000,\n'
+      + '030-gamivo,Gamivo S.A. (shares),250000,\n'
+      + '030-booste,Booste S.A. (shares),180000,\n'
+      + '032-climax,Climax Sp. z o.o. (loan),120000,\n'
+      + '3000,Share capital,,800000';
 
     var fileInput = el('input', { type: 'file', accept: '.csv,.txt', style: { display: 'none' } });
     var preview = el('div', { style: { marginTop: '12px' } });
@@ -352,6 +358,21 @@
         el('h3', null, 'Start from an existing trial balance'),
         el('p', { class: 'muted', style: { marginTop: '-4px' } },
           'Paste or upload your current trial balance. We read it as-is — it must balance (debits equal credits) before it can become your starting position.'),
+        el('div', { class: 'banner', style: { marginBottom: '10px', fontSize: '12.5px' } },
+          el('strong', null, 'Tip — break down portfolios and loans by company. '),
+          'Give each shareholding its own ',
+          el('code', null, '030-<company>'),
+          ' line and each loan its own ',
+          el('code', null, '032-<company>'),
+          ' line (e.g. ',
+          el('code', null, '030-gamivo'),
+          ', ',
+          el('code', null, '032-climax'),
+          '). Those opening figures then show as individual holdings in Portfolio and Loans, and a later sale or repayment draws down the right one. Plain ',
+          el('code', null, '030'),
+          ' / ',
+          el('code', null, '032'),
+          ' single lines also work.'),
         ta,
         el('div', { class: 'row', style: { gap: '8px', marginTop: '10px' } }, fileBtn, fileInput),
         preview,

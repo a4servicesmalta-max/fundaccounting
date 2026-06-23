@@ -234,6 +234,19 @@ function looksLikeInvoice(documentType: string, fileName: string): boolean {
   return /invoice|\bbill\b|faktura|supplier|receipt|credit\s*note/.test(hay);
 }
 
+/** Detect an invoice/bill from its CONTENT, independent of the file name or the
+ *  AI's classification. A fund-issued invoice named "USD receivable.txt" matches
+ *  neither — so it fell to the suggested-journal path and never reached the AR/AP
+ *  ledger. The tell is an invoice/bill word together with an amount-due / due-date
+ *  / invoice-number marker — things a share agreement or a bank statement lack. */
+export function looksLikeInvoiceContent(content: ExtractContent): boolean {
+  if (content.kind !== 'text' || !content.text) return false;
+  const t = content.text.toLowerCase();
+  const invWord = /\binvoice\b|faktura|rechnung|facture|fattura|\bbill\b|credit\s*note/.test(t);
+  const marker = /amount\s*(due|payable|owed|to\s*us)|total\s*due|\bdue\s*date|invoice\s*(no|number|#)|payment\s*due/.test(t);
+  return invWord && marker;
+}
+
 // Documents that are NOT accounting entries — audited reports, statutory/registry
 // papers, confirmations, KYC, etc. These are filed as supporting evidence and must
 // NEVER be posted or turned into a journal entry. (The "reject list".)
@@ -513,10 +526,15 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     }
 
     // 3c. An invoice/bill is routed to the Debtors & Creditors (AR/AP) ledger.
+    //     Detected by file name/documentType OR by content, so a fund-issued
+    //     invoice the model mis-read (and whose name lacks "invoice") still lands
+    //     in AR/AP rather than the suggested-journal path. extractArAp must still
+    //     parse a real invoice, so a false positive simply falls through.
+    const invoiceSignal = looksLikeInvoice(documentType, fileName) || looksLikeInvoiceContent(content);
     if (
-      routable &&
+      (routable || invoiceSignal) &&
       (content.kind === 'pdf' || content.kind === 'text' || content.kind === 'image') &&
-      looksLikeInvoice(documentType, fileName)
+      invoiceSignal
     ) {
       const ar = await extractArAp({ fileName, content });
       if (ar.ok && ar.item) {

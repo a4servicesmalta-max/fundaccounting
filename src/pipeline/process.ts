@@ -227,6 +227,14 @@ export function looksLikeBankStatementContent(content: ExtractContent): boolean 
   return (hasIban && (balances || stmtWord || datedLines >= 3)) || (balances && datedLines >= 3);
 }
 
+/** A CREDIT NOTE reverses/reduces an invoice — its AR/AP amount must be negated so
+ *  it offsets the related invoice rather than inflating debtors/creditors. Detected
+ *  from the file name + content, multilingual (EN/IT/DE/FR/PL/ES). */
+export function looksLikeCreditNote(fileName: string, content: ExtractContent): boolean {
+  const hay = `${fileName} ${content.kind === 'text' ? content.text ?? '' : ''}`.toLowerCase();
+  return /credit\s*note|nota\s*di\s*credito|gutschrift|note\s*de\s*cr[ée]dit|facture\s*d['’]?avoir|nota\s*de\s*cr[ée]dito|nota\s*kredytowa/.test(hay);
+}
+
 /** An invoice or supplier bill should go to the Debtors & Creditors (AR/AP)
  *  ledger rather than just being filed as supporting evidence. */
 function looksLikeInvoice(documentType: string, fileName: string): boolean {
@@ -548,6 +556,10 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     ) {
       const ar = await extractArAp({ fileName, content });
       if (ar.ok && ar.item) {
+        // A credit note REDUCES the related invoice — negate its amount so it
+        // offsets the debtor/creditor instead of inflating the balance.
+        const isCreditNote = looksLikeCreditNote(fileName, content);
+        if (isCreditNote) ar.item.amount = -Math.abs(ar.item.amount);
         // Already filed? Mark this upload as a duplicate instead of double-filing.
         const dup = findDuplicate(ar.item);
         if (dup) {
@@ -569,7 +581,9 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
         // If a matching bank line was already imported, settle it now (invoice
         // filed AFTER the statement still reverses against the debtor/creditor).
         rematchAll();
-        const label = ar.item.kind === 'RECEIVABLE' ? 'Invoice (owed to the fund)' : 'Bill (the fund owes)';
+        const label = isCreditNote
+          ? (ar.item.kind === 'RECEIVABLE' ? 'Credit note (reduces what is owed to the fund)' : 'Credit note (reduces what the fund owes)')
+          : (ar.item.kind === 'RECEIVABLE' ? 'Invoice (owed to the fund)' : 'Bill (the fund owes)');
         const note = `${label} — ${ar.item.counterparty} ${ar.item.currency} ${ar.item.amount}. Added to Debtors & Creditors.`;
         updateDocument(doc.id, { classification: 'ARAP', note });
         return { kind: 'ARAP', fileName, documentId: doc.id, message: note };

@@ -17,6 +17,9 @@ import {
   type DraftRecord,
 } from '../db/store';
 import { rematchInvestments } from '../bank/investment-settle';
+import { accountName } from '../core/chart';
+import { financialYearPlBalances } from '../report/report';
+import { buildClosingJournal, financialYearMonths, financialYearEnd } from './year-close';
 
 /** Throw if the draft's period is closed (locked). */
 function assertPeriodOpen(period: string | null | undefined, what: string): void {
@@ -193,6 +196,108 @@ export function reopenPeriod(period: string, actor = 'system'): string[] {
     after: { locked: false },
   });
   return listLockedPeriods();
+}
+
+// --- Year-end close (calendar fiscal year) -----------------------------------
+
+export interface CloseYearResult {
+  year: number;
+  netResult: number; // > 0 profit, < 0 loss
+  closingDraftId: string | null;
+  locked: string[];
+}
+
+/** True when every month of the calendar year is locked (i.e. the year is closed). */
+export function isYearClosed(year: number): boolean {
+  return financialYearMonths(year).every((m) => isPeriodLocked(m));
+}
+
+/**
+ * Close a calendar financial year: post an audited closing journal dated 31 Dec that
+ * zeroes the year's P&L into Retained earnings (3100), then lock all twelve months so
+ * nothing else posts into the closed year. Idempotent guard: throws if already closed.
+ */
+export function closeYear(year: number, actor = 'system'): CloseYearResult {
+  if (isYearClosed(year)) {
+    throw new Error(`Financial year ${year} is already closed.`);
+  }
+  const { date: closeDate, period: closePeriod } = financialYearEnd(year);
+  const journal = buildClosingJournal(financialYearPlBalances(year));
+
+  let closingDraftId: string | null = null;
+  if (journal.lines.length) {
+    const now = new Date().toISOString();
+    const draft: DraftRecord = {
+      id: '', // store assigns a fresh id
+      documentId: null,
+      investeeName: `Year-end close ${year}`,
+      instrument: 'SHARES',
+      eventType: 'YEAR_CLOSE',
+      controlCode: '3100',
+      currency: 'EUR',
+      txnDate: closeDate,
+      period: closePeriod,
+      status: 'POSTED',
+      sourceFigures: { amount: 0, quantity: null, fairValue: null, currency: 'EUR' },
+      engineFigures: {
+        functionalAmount: journal.netResult, currency: 'EUR', lineCount: journal.lines.length,
+        fxRate: null, fxRateDate: null, originalCurrency: 'EUR', originalAmount: 0,
+      },
+      lines: journal.lines.map((l) => ({
+        accountCode: l.accountCode,
+        accountName: accountName(l.accountCode),
+        amount: l.amount,
+        description: `Year-end close ${year}`,
+      })),
+      confidence: 1,
+      citation: null,
+      rationale: `Closing journal for financial year ${year}: P&L taken to retained earnings.`,
+      docName: null,
+      createdAt: now,
+      postedAt: now,
+      postedBy: actor,
+    };
+    insertDraft(draft);
+    closingDraftId = draft.id;
+  }
+
+  for (const m of financialYearMonths(year)) lockPeriod(m);
+  appendAudit({
+    action: 'YEAR_CLOSE',
+    entity: 'year',
+    entityId: String(year),
+    actor,
+    summary: `Closed financial year ${year} — net ${journal.netResult >= 0 ? 'profit' : 'loss'} ${Math.abs(journal.netResult)} to retained earnings`,
+    after: { netResult: journal.netResult, closingDraftId },
+  });
+  return { year, netResult: journal.netResult, closingDraftId, locked: listLockedPeriods() };
+}
+
+/**
+ * Reopen a closed financial year: unlock its twelve months and REVERSE the closing
+ * journal (an audited equal-and-opposite entry; the original is never deleted), so the
+ * year's P&L is restored and retained earnings unwound. Throws if the year isn't closed.
+ */
+export function reopenYear(year: number, actor = 'system'): { year: number; reversedIds: string[]; locked: string[] } {
+  const months = financialYearMonths(year);
+  if (!months.some((m) => isPeriodLocked(m))) {
+    throw new Error(`Financial year ${year} is not closed.`);
+  }
+  for (const m of months) unlockPeriod(m); // unlock first so the reversal can post
+  const closes = listDrafts('POSTED').filter(
+    (d) => d.eventType === 'YEAR_CLOSE' && d.period === `${year}-12` && !d.reversedByDraftId,
+  );
+  const reversedIds: string[] = [];
+  for (const d of closes) reversedIds.push(reverseDraft(d.id, `Reopened financial year ${year}`, actor).id);
+  appendAudit({
+    action: 'YEAR_REOPEN',
+    entity: 'year',
+    entityId: String(year),
+    actor,
+    summary: `Reopened financial year ${year}`,
+    after: { reversedIds },
+  });
+  return { year, reversedIds, locked: listLockedPeriods() };
 }
 
 // --- Reversal (POSTED entries; correction never deletes) ---------------------

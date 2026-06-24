@@ -27,7 +27,8 @@ export interface DraftRecord {
   // 'JOURNAL' = a generic AI-suggested journal entry (contract / share purchase /
   // anything that isn't a clean bank statement or invoice) awaiting review.
   // 'FV_REMEAS' = a fair-value remeasurement of a holding (trap T7 / IFRS9 FVTPL).
-  eventType: InvestmentEventType | 'JOURNAL' | 'FV_REMEAS';
+  // 'YEAR_CLOSE' = an audited year-end closing journal (zeroes P&L to retained earnings).
+  eventType: InvestmentEventType | 'JOURNAL' | 'FV_REMEAS' | 'YEAR_CLOSE';
   controlCode: string;
   currency: string;
   txnDate: string; // ISO

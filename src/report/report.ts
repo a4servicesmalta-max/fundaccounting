@@ -139,11 +139,24 @@ function arapLedgerLines(): PostedLineRow[] {
   return out;
 }
 
-/** Bank + AR/AP GL lines, optionally restricted to one period. */
+/** A period filter is either an exact month (YYYY-MM) or a whole calendar financial
+ *  year (YYYY) — the latter matches every month of that year. */
+function periodInFilter(rowPeriod: string | undefined, filter: string): boolean {
+  if (!rowPeriod) return false;
+  if (/^\d{4}$/.test(filter)) return rowPeriod.startsWith(`${filter}-`);
+  return rowPeriod === filter;
+}
+
+/** Upper bound for "as at" semantics: a whole-year filter means as at its December. */
+function asAtBound(filter: string): string {
+  return /^\d{4}$/.test(filter) ? `${filter}-12` : filter;
+}
+
+/** Bank + AR/AP GL lines, optionally restricted to one period (month or fiscal year). */
 function extraLedgerLinesIn(period?: string): PostedLineRow[] {
   const all = [...bankLedgerLines(), ...arapLedgerLines()];
   const p = period && period !== 'all' ? period : undefined;
-  return p ? all.filter((l) => l.period === p) : all;
+  return p ? all.filter((l) => periodInFilter(l.period, p)) : all;
 }
 
 // --- Portfolio ---------------------------------------------------------------
@@ -251,15 +264,17 @@ function postedLinesAsAt(period?: string): PostedLineRow[] {
   const p = normPeriod(period);
   const all = listPostedLines();
   if (!p) return all;
-  return all.filter((ln) => ln.period && ln.period <= p);
+  const bound = asAtBound(p);
+  return all.filter((ln) => ln.period && ln.period <= bound);
 }
 
-/** Posted lines whose draft period exactly matches (for ledger / trial balance). */
+/** Posted lines whose draft period falls in the filter (a month, or a whole fiscal
+ *  year). Used for the ledger / trial balance / P&L. */
 function postedLinesIn(period?: string): PostedLineRow[] {
   const p = normPeriod(period);
   const all = listPostedLines();
   if (!p) return all;
-  return all.filter((ln) => ln.period === p);
+  return all.filter((ln) => periodInFilter(ln.period, p));
 }
 
 /** Carrying value of one control sub-account from a given set of posted lines. */
@@ -500,7 +515,9 @@ function typeOf(code: string): AccountType {
 function extraLedgerLinesAsAt(period?: string): PostedLineRow[] {
   const all = [...bankLedgerLines(), ...arapLedgerLines()];
   const p = normPeriod(period);
-  return p ? all.filter((l) => l.period && l.period <= p) : all;
+  if (!p) return all;
+  const bound = asAtBound(p);
+  return all.filter((l) => l.period && l.period <= bound);
 }
 
 export interface StatementLine { accountCode: string; accountName: string; amount: number; }
@@ -514,7 +531,12 @@ export interface ProfitAndLoss {
 
 /** Profit & loss for the period: revenue (credit) less expenses (debit). */
 export function profitAndLoss(period?: string): ProfitAndLoss {
-  const balances = balancesFromLines([...postedLinesIn(period), ...extraLedgerLinesIn(period)]);
+  // The year-end closing journal zeroes the P&L into retained earnings; it must be
+  // EXCLUDED here so a closed year still shows its real trading result (not nil).
+  const lines = [...postedLinesIn(period), ...extraLedgerLinesIn(period)].filter(
+    (ln) => ln.eventType !== 'YEAR_CLOSE',
+  );
+  const balances = balancesFromLines(lines);
   const revenue: StatementLine[] = [];
   const expenses: StatementLine[] = [];
   let totalRevenue = 0;
@@ -536,6 +558,21 @@ export function profitAndLoss(period?: string): ProfitAndLoss {
   revenue.sort((a, b) => a.accountCode.localeCompare(b.accountCode));
   expenses.sort((a, b) => a.accountCode.localeCompare(b.accountCode));
   return { revenue, expenses, totalRevenue, totalExpenses, netProfit: round2(totalRevenue - totalExpenses) };
+}
+
+/** Revenue/expense account balances (debit-positive) for a calendar financial year,
+ *  excluding any existing closing journal — the basis for the year-end closing entry. */
+export function financialYearPlBalances(year: number): Map<string, number> {
+  const yr = String(year);
+  const lines = [...postedLinesIn(yr), ...extraLedgerLinesIn(yr)].filter(
+    (ln) => ln.eventType !== 'YEAR_CLOSE',
+  );
+  const pl = new Map<string, number>();
+  for (const [code, bal] of balancesFromLines(lines)) {
+    const t = typeOf(code);
+    if (t === 'REVENUE' || t === 'EXPENSE') pl.set(code, round2(bal));
+  }
+  return pl;
 }
 
 export interface BalanceSheet {
@@ -587,9 +624,13 @@ export function balanceSheet(period?: string): BalanceSheet {
       cumExpense = round2(cumExpense + bal);
     }
   }
+  // P&L not yet taken to retained earnings = the current (open) year's result. Once a
+  // year is closed, its closing journal moves that year's P&L into the 3100 Retained
+  // earnings account (shown above as brought-forward), so this line reflects only the
+  // open year — giving a brought-forward vs current-year split.
   const retainedEarnings = round2(cumRevenue - cumExpense);
   if (retainedEarnings !== 0) {
-    equity.push({ accountCode: '—', accountName: 'Retained earnings (current period)', amount: retainedEarnings });
+    equity.push({ accountCode: '—', accountName: 'Profit/(loss) for the current year', amount: retainedEarnings });
     totalEquity = round2(totalEquity + retainedEarnings);
   }
   assets.sort((a, b) => a.accountCode.localeCompare(b.accountCode));

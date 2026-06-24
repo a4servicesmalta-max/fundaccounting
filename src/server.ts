@@ -33,7 +33,7 @@ import { mountAuth } from './auth/gate';
 import { listFullChart, ensureAccount, hydrateChartFromStore } from './core/chart-store';
 import { isConfigured } from './ai/claude';
 import { processFileWithBundles, reclassifyDocument, type ProcessOutcome } from './pipeline/process';
-import { approveDraft, approveAll, rejectDraft, editDraft, reverseDraft, closePeriod, reopenPeriod } from './posting/post';
+import { approveDraft, approveAll, rejectDraft, editDraft, reverseDraft, closePeriod, reopenPeriod, closeYear, reopenYear, isYearClosed } from './posting/post';
 import { taxFlagsForDraft } from './core/tax-flags';
 import { composeFairValueRemeasurement } from './core/fair-value';
 import { portfolio, ledger, trialBalance, exportCsv, profitAndLoss, balanceSheet, navAllocation, ensureRevaluationRates } from './report/report';
@@ -310,6 +310,38 @@ app.post('/api/period-locks', (req: Request, res: Response) => {
   const actor = (req.body?.actor as string) || 'reviewer';
   const locked = action === 'unlock' ? reopenPeriod(period, actor) : closePeriod(period, actor);
   res.json({ locked });
+});
+
+// --- Year-end close (calendar fiscal year) -----------------------------------
+function parseYear(raw: unknown): number | null {
+  const y = Number(raw);
+  return Number.isInteger(y) && y >= 2000 && y <= 2100 ? y : null;
+}
+
+app.get('/api/year/:year/status', (req: Request, res: Response) => {
+  const year = parseYear(req.params.year);
+  if (year === null) return res.status(400).json({ error: 'Year must be a 4-digit year.' });
+  res.json({ year, closed: isYearClosed(year) });
+});
+
+app.post('/api/year/close', (req: Request, res: Response) => {
+  const year = parseYear(req.body?.year);
+  if (year === null) return res.status(400).json({ error: 'Year must be a 4-digit year.' });
+  try {
+    res.json(closeYear(year, (req.body?.actor as string) || 'reviewer'));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Could not close the year.' });
+  }
+});
+
+app.post('/api/year/reopen', (req: Request, res: Response) => {
+  const year = parseYear(req.body?.year);
+  if (year === null) return res.status(400).json({ error: 'Year must be a 4-digit year.' });
+  try {
+    res.json(reopenYear(year, (req.body?.actor as string) || 'reviewer'));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Could not reopen the year.' });
+  }
 });
 
 // --- Fair-value remeasurement (trap T7 / IFRS9 FVTPL) ------------------------

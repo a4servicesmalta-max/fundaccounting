@@ -28,12 +28,22 @@ import {
   listLockedPeriods,
 } from './db/store';
 import { ensureRatesSeeded } from './fx/rates';
-import { readObject } from './storage/objects';
+import * as crypto from 'crypto';
+import { readObject, saveObject, uploadKey } from './storage/objects';
+import {
+  insertAuditRequest,
+  listAuditRequests,
+  getAuditRequest,
+  gatherEvidenceForRequest,
+  isSheetName,
+  type AuditRequestAttachment,
+} from './audit-requests/audit-requests';
 import { mountAuth } from './auth/gate';
 import { listFullChart, ensureAccount, hydrateChartFromStore } from './core/chart-store';
 import { isConfigured } from './ai/claude';
 import { processFileWithBundles, reclassifyDocument, type ProcessOutcome } from './pipeline/process';
-import { collectEvidenceForPeriod, evidenceIndexForPeriod, evidenceManifestCsv } from './evidence/evidence';
+import { collectEvidenceForPeriod, evidenceIndexForPeriod } from './evidence/evidence';
+import { buildEvidenceZipBuffer } from './evidence/pack';
 import { approveDraft, approveAll, rejectDraft, editDraft, reverseDraft, closePeriod, reopenPeriod, closeYear, reopenYear, isYearClosed } from './posting/post';
 import { taxFlagsForDraft } from './core/tax-flags';
 import { composeFairValueRemeasurement } from './core/fair-value';
@@ -487,25 +497,70 @@ app.get('/api/evidence/zip', async (req: Request, res: Response) => {
   const period = evidencePeriod(req.query.period);
   if (period === null) return res.status(400).json({ error: 'period must be YYYY or YYYY-MM.' });
   try {
-    const items = collectEvidenceForPeriod(period);
     const label = period || 'all';
-    const zip = new AdmZip();
-    const safe = (s: string) => s.replace(/[\\/:*?"<>|]/g, '_');
-    for (const it of items) {
-      if (!it.storedPath) continue;
-      try {
-        const bytes = await readObject(it.storedPath);
-        zip.addFile(`evidence-${label}/${safe(it.classification || 'OTHER')}/${safe(`${it.id}-${it.fileName}`)}`, bytes);
-      } catch {
-        /* skip a file whose bytes can't be read; it still appears in the manifest */
-      }
-    }
-    zip.addFile(`evidence-${label}/manifest.csv`, Buffer.from(evidenceManifestCsv(items), 'utf8'));
+    const buf = await buildEvidenceZipBuffer(collectEvidenceForPeriod(period), label);
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="evidence-${label}.zip"`);
-    res.end(zip.toBuffer());
+    res.end(buf);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Could not build the evidence pack.' });
+  }
+});
+
+// --- Audit requests ----------------------------------------------------------
+// Drop an auditor's request (pasted email + any files / Excel sheets); the app stores
+// it and prepares the matching evidence pack. The AI step that ANSWERS an Excel sheet
+// from the evidence is gated separately behind the AI connection.
+app.get('/api/audit-requests', (_req: Request, res: Response) => {
+  res.json({
+    requests: listAuditRequests().map((r) => ({
+      id: r.id, title: r.title, period: r.period, status: r.status, createdAt: r.createdAt,
+      attachments: r.attachments.length, sheets: r.attachments.filter((a) => a.isSheet).length,
+      evidenceCount: gatherEvidenceForRequest(r).length,
+    })),
+  });
+});
+
+app.post('/api/audit-requests', upload.array('files'), async (req: Request, res: Response) => {
+  try {
+    const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+    const attachments: AuditRequestAttachment[] = [];
+    for (const f of files) {
+      const id = crypto.randomUUID();
+      const ext = (path.extname(f.originalname || '') || '').replace(/^\./, '').toLowerCase() || 'bin';
+      const storedPath = await saveObject(uploadKey(id, ext), f.buffer, f.mimetype || 'application/octet-stream');
+      attachments.push({ id, fileName: f.originalname || `${id}.${ext}`, storedPath, mime: f.mimetype || '', isSheet: isSheetName(f.originalname || '') });
+    }
+    const rawPeriod = typeof req.body?.period === 'string' ? req.body.period : '';
+    const period = /^\d{4}(-\d{2})?$/.test(rawPeriod) ? rawPeriod : null;
+    const r = insertAuditRequest({
+      title: typeof req.body?.title === 'string' ? req.body.title : '',
+      emailText: typeof req.body?.emailText === 'string' ? req.body.emailText : null,
+      attachments,
+      period,
+    });
+    res.json({ request: r });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Could not create the request.' });
+  }
+});
+
+app.get('/api/audit-requests/:id', (req: Request, res: Response) => {
+  const r = getAuditRequest(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Request not found.' });
+  res.json({ request: r, evidence: gatherEvidenceForRequest(r) });
+});
+
+app.get('/api/audit-requests/:id/pack.zip', async (req: Request, res: Response) => {
+  const r = getAuditRequest(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Request not found.' });
+  try {
+    const buf = await buildEvidenceZipBuffer(gatherEvidenceForRequest(r), `request-${r.id.slice(0, 8)}`);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="audit-pack-${r.id.slice(0, 8)}.zip"`);
+    res.end(buf);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Could not build the pack.' });
   }
 });
 

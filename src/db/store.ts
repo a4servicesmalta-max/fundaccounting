@@ -136,6 +136,8 @@ interface StoreShape {
   bankStatements: any[];
   bankTransactions: any[];
   arapItems: any[];
+  // Audit requests (auditor evidence requests + their gathered packs / answered sheets).
+  auditRequests: any[];
   // Persistent per-day FX cache, keyed "CCY:YYYY-MM-DD" -> EUR-per-1-unit rate.
   fxDailyCache: Record<string, number>;
   // Append-only, hash-chained audit trail.
@@ -172,6 +174,7 @@ function emptyStore(): StoreShape {
     bankStatements: [],
     bankTransactions: [],
     arapItems: [],
+    auditRequests: [],
     fxDailyCache: {},
     auditLog: [],
   };
@@ -244,6 +247,7 @@ function hydrate(parsed: Partial<StoreShape>): void {
     bankStatements: Array.isArray(parsed.bankStatements) ? parsed.bankStatements : [],
     bankTransactions: Array.isArray(parsed.bankTransactions) ? parsed.bankTransactions : [],
     arapItems: Array.isArray(parsed.arapItems) ? parsed.arapItems : [],
+    auditRequests: Array.isArray(parsed.auditRequests) ? parsed.auditRequests : [],
     fxDailyCache:
       parsed.fxDailyCache && typeof parsed.fxDailyCache === 'object' && !Array.isArray(parsed.fxDailyCache)
         ? (parsed.fxDailyCache as Record<string, number>)

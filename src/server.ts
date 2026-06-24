@@ -33,6 +33,7 @@ import { mountAuth } from './auth/gate';
 import { listFullChart, ensureAccount, hydrateChartFromStore } from './core/chart-store';
 import { isConfigured } from './ai/claude';
 import { processFileWithBundles, reclassifyDocument, type ProcessOutcome } from './pipeline/process';
+import { collectEvidenceForPeriod, evidenceIndexForPeriod, evidenceManifestCsv } from './evidence/evidence';
 import { approveDraft, approveAll, rejectDraft, editDraft, reverseDraft, closePeriod, reopenPeriod, closeYear, reopenYear, isYearClosed } from './posting/post';
 import { taxFlagsForDraft } from './core/tax-flags';
 import { composeFairValueRemeasurement } from './core/fair-value';
@@ -463,6 +464,44 @@ app.get('/api/export/:type', async (req: Request, res: Response) => {
     res.send(csv);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Export failed.' });
+  }
+});
+
+// --- Evidence linking + period evidence pack ---------------------------------
+function validPeriod(p: unknown): p is string {
+  return typeof p === 'string' && /^\d{4}(-\d{2})?$/.test(p);
+}
+
+// Evidence index for a period: linked files + which entries are missing a document.
+app.get('/api/evidence', (req: Request, res: Response) => {
+  const period = req.query.period;
+  if (!validPeriod(period)) return res.status(400).json({ error: 'period must be YYYY or YYYY-MM.' });
+  res.json(evidenceIndexForPeriod(period));
+});
+
+// Download every supporting document for a period as a ZIP (+ a manifest.csv).
+app.get('/api/evidence/zip', async (req: Request, res: Response) => {
+  const period = req.query.period;
+  if (!validPeriod(period)) return res.status(400).json({ error: 'period must be YYYY or YYYY-MM.' });
+  try {
+    const items = collectEvidenceForPeriod(period);
+    const zip = new AdmZip();
+    const safe = (s: string) => s.replace(/[\\/:*?"<>|]/g, '_');
+    for (const it of items) {
+      if (!it.storedPath) continue;
+      try {
+        const bytes = await readObject(it.storedPath);
+        zip.addFile(`evidence-${period}/${safe(it.classification || 'OTHER')}/${safe(`${it.id}-${it.fileName}`)}`, bytes);
+      } catch {
+        /* skip a file whose bytes can't be read; it still appears in the manifest */
+      }
+    }
+    zip.addFile(`evidence-${period}/manifest.csv`, Buffer.from(evidenceManifestCsv(items), 'utf8'));
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="evidence-${period}.zip"`);
+    res.end(zip.toBuffer());
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Could not build the evidence pack.' });
   }
 });
 

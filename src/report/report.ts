@@ -44,6 +44,23 @@ export function toEur(amount: number, currency: string, date: string): number {
   return round2(amount * eurRate(currency, date));
 }
 
+/** Convert an AR/AP item to EUR. Prefers the exact-date ECB rate captured at intake
+ *  (EUR per 1 unit, IAS 21 spot on the transaction date — the same source investments
+ *  and bank settlements use); falls back to the bundled-table conversion only for
+ *  legacy items recorded before rate capture. */
+export function arapItemToEur(item: {
+  amount: number;
+  currency: string;
+  issueDate: string | null;
+  dueDate: string | null;
+  fxRate?: number | null;
+}): number {
+  if (typeof item.fxRate === 'number' && Number.isFinite(item.fxRate) && item.fxRate > 0) {
+    return round2(item.amount * item.fxRate);
+  }
+  return toEur(item.amount, item.currency, item.issueDate || item.dueDate || '');
+}
+
 function glLine(
   code: string,
   amount: number,
@@ -105,7 +122,7 @@ function arapLedgerLines(): PostedLineRow[] {
   for (const it of listItems()) {
     const date = it.issueDate || it.dueDate || '';
     const period = date.slice(0, 7);
-    const eur = toEur(it.amount, it.currency, date);
+    const eur = arapItemToEur(it);
     if (!eur) continue;
     const src = { txnId: it.id, documentId: it.documentId ?? null, docName: it.docName ?? null };
     if (it.kind === 'RECEIVABLE') {

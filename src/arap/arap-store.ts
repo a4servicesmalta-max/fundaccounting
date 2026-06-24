@@ -21,6 +21,12 @@ export interface ArApItem {
   paidByTxnId: string | null;
   docName: string | null;
   createdAt: string;
+  // Exact-date ECB rate captured at intake (EUR per 1 unit of `currency`, what
+  // getDailyRateToEur returns) so the item reports in EUR at the IAS 21 spot rate on
+  // its transaction date — the same source the investment and bank-settlement legs
+  // use — rather than the bundled static table. Null/absent on legacy items.
+  fxRate?: number | null;
+  fxRateDate?: string | null; // YYYY-MM-DD the rate is dated to
 }
 
 // --- CRUD over getDb().arapItems --------------------------------------------
@@ -40,6 +46,8 @@ export function insertItem(item: Partial<ArApItem> & Pick<ArApItem, 'kind' | 'co
     paidByTxnId: item.paidByTxnId ?? null,
     docName: item.docName ?? null,
     createdAt: item.createdAt ?? new Date().toISOString(),
+    fxRate: item.fxRate ?? null,
+    fxRateDate: item.fxRateDate ?? null,
   };
   getDb().arapItems.push(record);
   persist();

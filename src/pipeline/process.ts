@@ -28,6 +28,7 @@ import { extractBankStatement } from '../ai/extract-bank';
 import { ingestStatement } from '../bank/ingest';
 import { extractArAp } from '../ai/extract-arap';
 import { insertItem, findDuplicate } from '../arap/arap-store';
+import { resolveArApFxRate } from '../arap/arap-fx';
 import { rematchAll } from '../bank/settle';
 import { suggestJournal } from '../ai/suggest-journal';
 import { listFullChart } from '../core/chart-store';
@@ -567,6 +568,7 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
           updateDocument(doc.id, { classification: 'DUPLICATE', note: dnote });
           return { kind: 'DUPLICATE', fileName, documentId: doc.id, message: dnote };
         }
+        const arFx = await resolveArApFxRate(ar.item.currency, ar.item.issueDate ?? null, ar.item.dueDate ?? null);
         insertItem({
           documentId: doc.id,
           kind: ar.item.kind,
@@ -577,6 +579,8 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
           dueDate: ar.item.dueDate ?? null,
           status: 'OPEN',
           docName: fileName,
+          fxRate: arFx.fxRate,
+          fxRateDate: arFx.fxRateDate,
         });
         // If a matching bank line was already imported, settle it now (invoice
         // filed AFTER the statement still reverses against the debtor/creditor).
@@ -850,10 +854,11 @@ export async function reclassifyDocument(documentId: string, action: ReclassifyA
         updateDocument(documentId, { classification: 'DUPLICATE', note: dnote });
         return { kind: 'DUPLICATE', fileName, documentId, message: dnote };
       }
+      const arFx2 = await resolveArApFxRate(ar.item.currency, ar.item.issueDate ?? null, ar.item.dueDate ?? null);
       insertItem({
         documentId, kind: ar.item.kind, counterparty: ar.item.counterparty, amount: ar.item.amount,
         currency: ar.item.currency, issueDate: ar.item.issueDate ?? null, dueDate: ar.item.dueDate ?? null,
-        status: 'OPEN', docName: fileName,
+        status: 'OPEN', docName: fileName, fxRate: arFx2.fxRate, fxRateDate: arFx2.fxRateDate,
       });
       rematchAll();
       updateDocument(documentId, { classification: 'ARAP', note: `Treated as ${ar.item.kind === 'RECEIVABLE' ? 'an invoice' : 'a bill'} — added to Debtors & Creditors.` });

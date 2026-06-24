@@ -139,6 +139,42 @@ function arapLedgerLines(): PostedLineRow[] {
   return out;
 }
 
+/**
+ * Realised FX gain/loss when a FOREIGN AR/AP item is settled. The item's debtor/
+ * creditor is booked at the issue-date ECB rate; the settling bank line clears it at
+ * the payment-date ECB rate. The difference would otherwise sit unresolved in 1100/
+ * 2010 — instead it clears the control residual to 6800 (FX gain/loss) so the debtor/
+ * creditor zeroes out for the settled item and the realised FX hits the P&L.
+ */
+function arapSettlementFxLines(): PostedLineRow[] {
+  const out: PostedLineRow[] = [];
+  const txns = new Map(listTransactions().map((t) => [t.id, t]));
+  const accCcy = new Map(listAccounts().map((a) => [a.id, a.currency || 'EUR']));
+  for (const it of listItems()) {
+    if (it.status !== 'PAID' || !it.paidByTxnId) continue;
+    if ((it.currency || 'EUR').toUpperCase() === 'EUR') continue; // FX only on foreign items
+    const txn = txns.get(it.paidByTxnId);
+    if (!txn) continue;
+    const bookedEur = Math.abs(arapItemToEur(it));
+    const bankCcy = (accCcy.get(txn.bankAccountId) as string) || 'EUR';
+    const settledEur = Math.abs(toEur(txn.amount, bankCcy, txn.date));
+    if (!bookedEur || !settledEur) continue;
+    // Receivable: booked less collected = loss if you received fewer EUR (g > 0 -> 6800
+    // debit). Payable: paid more than booked = loss (g > 0 -> 6800 debit). Either way
+    // the control line is the opposite, clearing the residual to nil.
+    const g = round2(it.kind === 'RECEIVABLE' ? bookedEur - settledEur : settledEur - bookedEur);
+    if (Math.abs(g) < 0.01) continue;
+    const code = it.kind === 'RECEIVABLE' ? '1100' : '2010';
+    const date = txn.date;
+    const period = txn.period || date.slice(0, 7);
+    const desc = `FX on settlement — ${it.counterparty || ''}`.trim();
+    const src = { txnId: `fx-${it.id}`, documentId: it.documentId ?? null, docName: it.docName ?? null };
+    out.push(glLine(code, -g, period, date, desc, 'ARAP_FX', src)); // clear the control residual
+    out.push(glLine('6800', g, period, date, desc, 'ARAP_FX', src)); // realised FX gain/loss
+  }
+  return out;
+}
+
 /** A period filter is either an exact month (YYYY-MM) or a whole calendar financial
  *  year (YYYY) — the latter matches every month of that year. */
 function periodInFilter(rowPeriod: string | undefined, filter: string): boolean {
@@ -154,7 +190,7 @@ function asAtBound(filter: string): string {
 
 /** Bank + AR/AP GL lines, optionally restricted to one period (month or fiscal year). */
 function extraLedgerLinesIn(period?: string): PostedLineRow[] {
-  const all = [...bankLedgerLines(), ...arapLedgerLines()];
+  const all = [...bankLedgerLines(), ...arapLedgerLines(), ...arapSettlementFxLines()];
   const p = period && period !== 'all' ? period : undefined;
   return p ? all.filter((l) => periodInFilter(l.period, p)) : all;
 }
@@ -513,7 +549,7 @@ function typeOf(code: string): AccountType {
 
 /** Bank + AR/AP GL lines cumulative up to and including the period (for the BS). */
 function extraLedgerLinesAsAt(period?: string): PostedLineRow[] {
-  const all = [...bankLedgerLines(), ...arapLedgerLines()];
+  const all = [...bankLedgerLines(), ...arapLedgerLines(), ...arapSettlementFxLines()];
   const p = normPeriod(period);
   if (!p) return all;
   const bound = asAtBound(p);

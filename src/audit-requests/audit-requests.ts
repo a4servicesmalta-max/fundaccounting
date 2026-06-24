@@ -89,17 +89,21 @@ const STOP = new Set([
   'pdf', 'xlsx', 'xlsm', 'xls', 'csv', 'txt', 'docx', 'doc', 'png', 'jpg', 'jpeg', 'zip',
 ]);
 
-/** Meaningful match terms from the request text + attachment names (entities, years,
- *  amounts, references). Split on punctuation; lowercased, deduped, stopwords removed. */
-export function extractTerms(req: Pick<AuditRequestRecord, 'emailText' | 'attachments'>): string[] {
-  const text = `${req.emailText || ''} ${(req.attachments || []).map((a) => a.fileName).join(' ')}`.toLowerCase();
-  const tokens = text.match(/[a-z0-9]{3,}/g) || [];
+/** Meaningful match terms from free text: split on punctuation; lowercased, deduped,
+ *  stopwords removed. Shared by request gathering and sheet-row answering. */
+export function termsFromText(text: string): string[] {
+  const tokens = (text || '').toLowerCase().match(/[a-z0-9]{3,}/g) || [];
   const out = new Set<string>();
   for (const t of tokens) {
     if (STOP.has(t)) continue;
     out.add(t);
   }
   return [...out];
+}
+
+/** Match terms from the request text + attachment names (entities, years, references). */
+export function extractTerms(req: Pick<AuditRequestRecord, 'emailText' | 'attachments'>): string[] {
+  return termsFromText(`${req.emailText || ''} ${(req.attachments || []).map((a) => a.fileName).join(' ')}`);
 }
 
 /**

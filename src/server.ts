@@ -34,10 +34,14 @@ import {
   insertAuditRequest,
   listAuditRequests,
   getAuditRequest,
+  updateAuditRequest,
   gatherEvidenceForRequest,
   isSheetName,
   type AuditRequestAttachment,
 } from './audit-requests/audit-requests';
+import { sheetBufferToRows, answerSheetRows, rowsToXlsxBuffer } from './audit-requests/answer-sheet';
+
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 import { mountAuth } from './auth/gate';
 import { listFullChart, ensureAccount, hydrateChartFromStore } from './core/chart-store';
 import { isConfigured } from './ai/claude';
@@ -561,6 +565,53 @@ app.get('/api/audit-requests/:id/pack.zip', async (req: Request, res: Response) 
     res.end(buf);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Could not build the pack.' });
+  }
+});
+
+// Answer the request's Excel/CSV sheet(s) from the gathered evidence (deterministic;
+// rows with no match are flagged for review — where the AI reader helps once connected).
+app.post('/api/audit-requests/:id/answer', async (req: Request, res: Response) => {
+  const r = getAuditRequest(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Request not found.' });
+  const sheets = r.attachments.filter((a) => a.isSheet && a.storedPath);
+  if (!sheets.length) return res.status(400).json({ error: 'This request has no Excel/CSV sheet to answer.' });
+  try {
+    const evidence = gatherEvidenceForRequest(r);
+    const answeredSheets = [...(r.answeredSheets || [])];
+    let answered = 0;
+    let needsReview = 0;
+    for (const a of sheets) {
+      const bytes = await readObject(a.storedPath as string);
+      const result = answerSheetRows(sheetBufferToRows(bytes), evidence);
+      answered += result.answered;
+      needsReview += result.needsReview;
+      const outName = a.fileName.replace(/\.(xlsx|xlsm|xls|csv)$/i, '') + '-answered.xlsx';
+      const id = crypto.randomUUID();
+      const storedPath = await saveObject(uploadKey(id, 'xlsx'), rowsToXlsxBuffer(result.rows), XLSX_MIME);
+      const entry = { attachmentId: a.id, storedPath, fileName: outName };
+      const idx = answeredSheets.findIndex((s) => s.attachmentId === a.id);
+      if (idx >= 0) answeredSheets[idx] = entry;
+      else answeredSheets.push(entry);
+    }
+    updateAuditRequest(r.id, { answeredSheets, status: 'ANSWERED' });
+    res.json({ answered, needsReview, sheets: answeredSheets.length });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Could not answer the sheet.' });
+  }
+});
+
+app.get('/api/audit-requests/:id/answer/:attachmentId', async (req: Request, res: Response) => {
+  const r = getAuditRequest(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Request not found.' });
+  const entry = (r.answeredSheets || []).find((s) => s.attachmentId === req.params.attachmentId);
+  if (!entry || !entry.storedPath) return res.status(404).json({ error: 'No answered sheet for this attachment.' });
+  try {
+    const bytes = await readObject(entry.storedPath);
+    res.setHeader('Content-Type', XLSX_MIME);
+    res.setHeader('Content-Disposition', `attachment; filename="${entry.fileName.replace(/"/g, '')}"`);
+    res.end(bytes);
+  } catch {
+    res.status(404).json({ error: 'Answered sheet file not found.' });
   }
 });
 

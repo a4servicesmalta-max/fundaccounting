@@ -79,13 +79,52 @@
           var dlBtn = el('a', { class: 'btn btn-dark btn-sm',
             href: '/api/audit-requests/' + q.id + '/pack.zip', target: '_blank', rel: 'noopener',
             title: 'Download a ZIP of the gathered evidence, with a manifest' }, 'Download evidence pack');
+          var actions = el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, dlBtn);
+          var answersWrap = el('div', { style: { marginTop: '10px' } });
+
+          if ((q.sheets || 0) > 0) {
+            var ansBtn = el('button', { class: 'btn btn-secondary btn-sm',
+              title: 'Match the request sheet against the gathered evidence and fill in the answers' }, 'Answer the sheet');
+            ansBtn.addEventListener('click', async function () {
+              ansBtn.disabled = true; ansBtn.textContent = 'Answering…';
+              try {
+                var resp = await fetch('/api/audit-requests/' + q.id + '/answer', { method: 'POST' });
+                var j = await resp.json();
+                if (j && j.error) { FA.toast(j.error, 'error'); }
+                else {
+                  FA.toast('Answered ' + (j.answered || 0) + ' item(s); ' + (j.needsReview || 0) + ' need review.', 'success');
+                  await renderAnswers(q.id, answersWrap);
+                }
+              } catch (e) { FA.toast('Could not answer the sheet.', 'error'); }
+              ansBtn.disabled = false; ansBtn.textContent = 'Answer the sheet';
+            });
+            actions.appendChild(ansBtn);
+          }
+
           var rc = el('div', { class: 'card card-pad', style: { marginTop: '12px' } },
             el('div', { class: 'spread', style: { alignItems: 'center', gap: '12px', flexWrap: 'wrap' } },
               el('div', null,
                 el('div', { style: { fontWeight: '600' } }, q.title || 'Audit request'),
                 el('div', { class: 'muted', style: { fontSize: '13px', marginTop: '2px' } }, meta)),
-              el('div', { class: 'row', style: { gap: '8px' } }, dlBtn)));
+              actions),
+            answersWrap);
           listWrap.appendChild(rc);
+          renderAnswers(q.id, answersWrap); // show any sheets already answered
+        });
+      }
+
+      // Render download links for a request's answered sheets (if any).
+      async function renderAnswers(id, wrap) {
+        wrap.innerHTML = '';
+        var d = await FA.api('/api/audit-requests/' + id);
+        var sheets = (d && d.request && Array.isArray(d.request.answeredSheets)) ? d.request.answeredSheets : [];
+        if (!sheets.length) return;
+        wrap.appendChild(el('div', { class: 'muted', style: { fontSize: '13px', marginBottom: '4px' } }, 'Answered sheets:'));
+        sheets.forEach(function (s) {
+          wrap.appendChild(el('div', { style: { marginTop: '2px' } },
+            el('a', { class: 'btn btn-ghost btn-sm',
+              href: '/api/audit-requests/' + id + '/answer/' + s.attachmentId, target: '_blank', rel: 'noopener' },
+              '⤓ ' + (s.fileName || 'answered sheet'))));
         });
       }
 

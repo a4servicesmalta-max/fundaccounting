@@ -29,15 +29,18 @@ export interface EvidenceIndex {
   missing: { ref: string; date: string; description: string }[];
 }
 
-/** A period filter is a month (YYYY-MM) or a whole calendar year (YYYY). */
+/** A period filter is a month (YYYY-MM), a whole calendar year (YYYY), or empty/"all"
+ *  meaning the whole book. */
 function inPeriod(p: string | undefined | null, filter: string): boolean {
+  if (!filter || filter === 'all') return true; // whole book
   if (!p) return false;
   if (/^\d{4}$/.test(filter)) return p.startsWith(`${filter}-`);
   return p === filter;
 }
 
-/** Gather every supporting document/statement whose entry falls in the period, deduped. */
-export function collectEvidenceForPeriod(period: string): EvidenceItem[] {
+/** Gather every supporting document/statement whose entry falls in the period (or the
+ *  whole book when period is omitted), deduped. */
+export function collectEvidenceForPeriod(period = ''): EvidenceItem[] {
   const out: EvidenceItem[] = [];
   const seen = new Set<string>();
   const add = (it: EvidenceItem) => {
@@ -87,7 +90,7 @@ export function collectEvidenceForPeriod(period: string): EvidenceItem[] {
 
 /** Evidence index for a period: the linked items + which value-bearing entries are
  *  still MISSING a supporting document (so gaps are visible, not silent). */
-export function evidenceIndexForPeriod(period: string): EvidenceIndex {
+export function evidenceIndexForPeriod(period = ''): EvidenceIndex {
   const items = collectEvidenceForPeriod(period);
   // Value-bearing entries in the period, by transaction, and whether each has a doc.
   const byTxn = new Map<string, { hasDoc: boolean; date: string; description: string; ref: string }>();

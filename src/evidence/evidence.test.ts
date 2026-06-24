@@ -52,6 +52,8 @@ test('collects linked documents for the period and dedupes', () => {
   assert.deepEqual(ids, ['d1', 'd2']); // d1 once (deduped), d2; d3 is in 2024
   // A whole-year filter picks up the 2024 doc too.
   assert.deepEqual(collectEvidenceForPeriod('2024').map((i) => i.id), ['d3']);
+  // No period = the whole book: every linked document, deduped.
+  assert.deepEqual(collectEvidenceForPeriod('').map((i) => i.id).sort(), ['d1', 'd2', 'd3']);
 });
 
 test('surfaces entries that are MISSING a document', () => {

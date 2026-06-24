@@ -76,13 +76,19 @@
     var fsBtn = el('a', { class: 'btn btn-dark btn-sm', href: '/api/report/fs' + FA.periodQuery(), target: '_blank', rel: 'noopener',
       title: 'Open a printable financial-statements pack (P&L, balance sheet, trial balance) with a cover page' },
       el('span', { class: 'ico', html: FA.icon('books') }), 'Financial statements report');
+    // Download a ZIP of every supporting document for the selected period (read at
+    // click time so it follows the month/year filter; no filter = the whole book).
+    var evBtn = el('button', { class: 'btn btn-ghost btn-sm',
+      title: 'Download a ZIP of all supporting evidence for the selected period, with a manifest of what each file supports',
+      onclick: function () { window.open('/api/evidence/zip' + FA.periodQuery(), '_blank', 'noopener'); } },
+      el('span', { class: 'ico', html: FA.icon('documents') }), 'Download evidence pack');
     mount.appendChild(
       el('div', { class: 'spread', style: { marginBottom: '18px', alignItems: 'flex-start', gap: '16px' } },
         el('div', null,
           el('h1', { class: 'section-title' }, 'Books & reports'),
           el('p', { class: 'section-help' },
-            "Everything you've approved, totted up. Download any report as a spreadsheet, or open the full financial-statements pack.")),
-        fsBtn));
+            "Everything you've approved, totted up. Download any report as a spreadsheet, the full financial-statements pack, or a ZIP of all supporting evidence for the period.")),
+        el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, evBtn, fsBtn)));
 
     // ---- Period toolbar ------------------------------------------------------
     var toolbar = el('div', { class: 'card card-pad spread', style: { gap: '16px', flexWrap: 'wrap', marginBottom: '18px' } });

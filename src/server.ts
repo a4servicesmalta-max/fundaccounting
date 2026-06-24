@@ -468,37 +468,41 @@ app.get('/api/export/:type', async (req: Request, res: Response) => {
 });
 
 // --- Evidence linking + period evidence pack ---------------------------------
-function validPeriod(p: unknown): p is string {
-  return typeof p === 'string' && /^\d{4}(-\d{2})?$/.test(p);
+// A period is optional: a month (YYYY-MM), a whole year (YYYY), or absent = whole book.
+function evidencePeriod(p: unknown): string | null {
+  if (p === undefined || p === '' || p === 'all') return '';
+  if (typeof p === 'string' && /^\d{4}(-\d{2})?$/.test(p)) return p;
+  return null; // present but malformed
 }
 
-// Evidence index for a period: linked files + which entries are missing a document.
+// Evidence index: linked files + which entries are missing a document.
 app.get('/api/evidence', (req: Request, res: Response) => {
-  const period = req.query.period;
-  if (!validPeriod(period)) return res.status(400).json({ error: 'period must be YYYY or YYYY-MM.' });
+  const period = evidencePeriod(req.query.period);
+  if (period === null) return res.status(400).json({ error: 'period must be YYYY or YYYY-MM.' });
   res.json(evidenceIndexForPeriod(period));
 });
 
-// Download every supporting document for a period as a ZIP (+ a manifest.csv).
+// Download every supporting document (for a period, or the whole book) as a ZIP.
 app.get('/api/evidence/zip', async (req: Request, res: Response) => {
-  const period = req.query.period;
-  if (!validPeriod(period)) return res.status(400).json({ error: 'period must be YYYY or YYYY-MM.' });
+  const period = evidencePeriod(req.query.period);
+  if (period === null) return res.status(400).json({ error: 'period must be YYYY or YYYY-MM.' });
   try {
     const items = collectEvidenceForPeriod(period);
+    const label = period || 'all';
     const zip = new AdmZip();
     const safe = (s: string) => s.replace(/[\\/:*?"<>|]/g, '_');
     for (const it of items) {
       if (!it.storedPath) continue;
       try {
         const bytes = await readObject(it.storedPath);
-        zip.addFile(`evidence-${period}/${safe(it.classification || 'OTHER')}/${safe(`${it.id}-${it.fileName}`)}`, bytes);
+        zip.addFile(`evidence-${label}/${safe(it.classification || 'OTHER')}/${safe(`${it.id}-${it.fileName}`)}`, bytes);
       } catch {
         /* skip a file whose bytes can't be read; it still appears in the manifest */
       }
     }
-    zip.addFile(`evidence-${period}/manifest.csv`, Buffer.from(evidenceManifestCsv(items), 'utf8'));
+    zip.addFile(`evidence-${label}/manifest.csv`, Buffer.from(evidenceManifestCsv(items), 'utf8'));
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="evidence-${period}.zip"`);
+    res.setHeader('Content-Disposition', `attachment; filename="evidence-${label}.zip"`);
     res.end(zip.toBuffer());
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Could not build the evidence pack.' });

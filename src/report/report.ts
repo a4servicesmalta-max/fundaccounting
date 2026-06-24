@@ -9,6 +9,7 @@ import { loadRates } from '../fx/rates';
 import { listTransactions, listAccounts } from '../bank/bank-store';
 import { listItems } from '../arap/arap-store';
 import { unitsHeldFor } from './positions';
+import { getDailyRateToEur } from '../fx/daily';
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -275,6 +276,27 @@ function balancesFromLines(lines: PostedLineRow[]): Map<string, number> {
     map.set(ln.accountCode, round2((map.get(ln.accountCode) ?? 0) + ln.amount));
   }
   return map;
+}
+
+/**
+ * Warm the FX cache with the ECB CLOSING rate at the reporting period-end for every
+ * foreign-currency holding, so the revaluation column marks to the IAS 21 closing rate
+ * (the same ECB source AR/AP and bank settlements use) rather than the bundled table.
+ * eurRate reads this cache before falling back to the bundled rates. Call (await) from
+ * the report routes before building portfolio/overview/FS; failures degrade gracefully
+ * to the bundled rate. Keeps portfolio() itself synchronous.
+ */
+export async function ensureRevaluationRates(period?: string): Promise<void> {
+  const revalDate = periodEndDate(period);
+  const currencies = new Set<string>();
+  for (const d of listDrafts('POSTED')) {
+    if (!/^03[02]-/.test(d.controlCode) || /^032-1/.test(d.controlCode)) continue;
+    const cur = (d.engineFigures?.originalCurrency || d.currency || 'EUR').toUpperCase();
+    if (cur !== 'EUR') currencies.add(cur);
+  }
+  await Promise.all(
+    [...currencies].map((c) => getDailyRateToEur(c, revalDate).catch(() => undefined)),
+  );
 }
 
 export function portfolio(period?: string): PortfolioReport {

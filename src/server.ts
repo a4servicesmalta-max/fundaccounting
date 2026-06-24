@@ -36,7 +36,7 @@ import { processFileWithBundles, reclassifyDocument, type ProcessOutcome } from 
 import { approveDraft, approveAll, rejectDraft, editDraft, reverseDraft, closePeriod, reopenPeriod } from './posting/post';
 import { taxFlagsForDraft } from './core/tax-flags';
 import { composeFairValueRemeasurement } from './core/fair-value';
-import { portfolio, ledger, trialBalance, exportCsv, profitAndLoss, balanceSheet, navAllocation } from './report/report';
+import { portfolio, ledger, trialBalance, exportCsv, profitAndLoss, balanceSheet, navAllocation, ensureRevaluationRates } from './report/report';
 import { buildFsReportHtml } from './report/fs-report';
 import { bankRouter } from './bank/bank.routes';
 import { arapRouter } from './arap/arap.routes';
@@ -365,9 +365,11 @@ app.post('/api/investments/:controlCode/revalue', (req: Request, res: Response) 
 });
 
 // --- Reports -----------------------------------------------------------------
-app.get('/api/report/portfolio', (req: Request, res: Response) => {
+app.get('/api/report/portfolio', async (req: Request, res: Response) => {
   try {
-    res.json(portfolio(req.query.period as string | undefined));
+    const period = req.query.period as string | undefined;
+    await ensureRevaluationRates(period); // warm the period-end ECB closing rate
+    res.json(portfolio(period));
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Report failed.' });
   }
@@ -402,10 +404,11 @@ app.get('/api/report/balance-sheet', (req: Request, res: Response) => {
 });
 
 // Printable financial-statements pack (HTML the user prints to PDF).
-app.get('/api/report/fs', (req: Request, res: Response) => {
+app.get('/api/report/fs', async (req: Request, res: Response) => {
   try {
     const period = req.query.period as string | undefined;
     const entity = typeof req.query.entity === 'string' && req.query.entity ? req.query.entity : undefined;
+    await ensureRevaluationRates(period); // warm the period-end ECB closing rate for the notes
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(buildFsReportHtml(period, entity));
   } catch (err) {
@@ -414,13 +417,15 @@ app.get('/api/report/fs', (req: Request, res: Response) => {
 });
 
 // --- CSV export --------------------------------------------------------------
-app.get('/api/export/:type', (req: Request, res: Response) => {
+app.get('/api/export/:type', async (req: Request, res: Response) => {
   const type = req.params.type;
   if (type !== 'portfolio' && type !== 'ledger' && type !== 'trial-balance') {
     return res.status(400).json({ error: 'Unknown export type.' });
   }
   try {
-    const csv = exportCsv(type, req.query.period as string | undefined);
+    const period = req.query.period as string | undefined;
+    if (type === 'portfolio') await ensureRevaluationRates(period); // period-end ECB closing rate
+    const csv = exportCsv(type, period);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${type}.csv"`);
     res.send(csv);
@@ -488,8 +493,9 @@ app.get('/api/documents', (_req: Request, res: Response) => {
 });
 
 // --- Overview dashboard aggregation (figures from the store, never fabricated) ---
-app.get('/api/overview', (_req: Request, res: Response) => {
+app.get('/api/overview', async (_req: Request, res: Response) => {
   try {
+    await ensureRevaluationRates(); // warm the closing ECB rate so NAV/holdings revalue at it
     const c = counts();
     const pf = portfolio();
     const r2 = (n: number) => Math.round((n || 0) * 100) / 100;

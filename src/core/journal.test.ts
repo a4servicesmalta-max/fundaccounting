@@ -9,6 +9,7 @@ const refs: FundAccountRefs = {
   bankCode: '1010',
   gainLossCode: '6800',
   incomeCode: '4000',
+  interestIncomeCode: '510',
   fxCode: '6800',
   writeOffCode: '6850',
 };
@@ -93,13 +94,23 @@ test('DISTRIBUTION debits bank, credits income', () => {
   assert.equal(lines.find((l) => l.accountCode === '4000')!.amount, -700);
 });
 
-test('INTEREST_ACCRUAL debits control, credits income', () => {
+test('INTEREST_ACCRUAL credits loan interest income (510), not investment income (4000)', () => {
   const lines = buildInvestmentJournalLines(
     { type: 'INTEREST_ACCRUAL', amountFunctional: 150, description: 'interest' },
     refs
   );
   assert.equal(sum(lines), 0);
   assert.equal(lines.find((l) => l.accountCode === '030-gamivo')!.amount, 150);
+  assert.equal(lines.find((l) => l.accountCode === '510')!.amount, -150); // loan interest income
+  assert.equal(lines.find((l) => l.accountCode === '4000'), undefined); // not lumped with dividends
+});
+
+test('INTEREST_ACCRUAL falls back to incomeCode when interestIncomeCode is unset', () => {
+  const legacy: FundAccountRefs = { ...refs, interestIncomeCode: undefined };
+  const lines = buildInvestmentJournalLines(
+    { type: 'INTEREST_ACCRUAL', amountFunctional: 150, description: 'interest' },
+    legacy
+  );
   assert.equal(lines.find((l) => l.accountCode === '4000')!.amount, -150);
 });
 

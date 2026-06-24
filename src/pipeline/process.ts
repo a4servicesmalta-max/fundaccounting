@@ -682,7 +682,8 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
       controlCode,
       bankCode: '1010',
       gainLossCode: '500', // realised gain/loss on disposal of shares
-      incomeCode: '4000', // investment income / distributions
+      incomeCode: '4000', // investment income / distributions (dividends)
+      interestIncomeCode: '510', // loan interest income (own line; matches the bank/cash path)
       fxCode: '6800', // FX gain/loss
       writeOffCode: '610', // impairment loss on investments
     };

@@ -54,7 +54,9 @@ export function buildInvestmentJournalLines(
     case 'DISTRIBUTION':
       return [line(refs.bankCode, amt, d), line(refs.incomeCode, -amt, d)];
     case 'INTEREST_ACCRUAL':
-      return [line(refs.controlCode, amt, d), line(refs.incomeCode, -amt, d)];
+      // Loan interest income to its own line (510) — the same account the bank/cash
+      // path uses — not lumped into investment income (4000) with dividends.
+      return [line(refs.controlCode, amt, d), line(refs.interestIncomeCode ?? refs.incomeCode, -amt, d)];
     case 'FX_REVAL':
       return [line(refs.controlCode, amt, d), line(refs.fxCode, -amt, d)];
     case 'WRITE_OFF': {

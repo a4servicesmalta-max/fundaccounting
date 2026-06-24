@@ -23,7 +23,11 @@ export interface FundAccountRefs {
   controlCode: string; // e.g. '030-gamivo'
   bankCode: string; // '1010'
   gainLossCode: string; // '6800'
-  incomeCode: string; // '4000'
+  incomeCode: string; // '4000' — investment income (distributions / dividends)
+  /** Loan interest income — its own line ('510'), kept separate from dividend/
+   *  investment income, and the SAME account the bank/cash path books interest to.
+   *  Falls back to incomeCode when not set. */
+  interestIncomeCode?: string; // '510'
   fxCode: string; // '6800'
   writeOffCode: string; // '6850'
 }

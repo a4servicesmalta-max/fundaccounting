@@ -36,6 +36,11 @@
       mount.appendChild(setupCard);
       await renderAccountingSetup(el, setupCard, FA);
 
+      // ---- Year-end close card -------------------------------------------
+      const yearCard = el('div', { class: 'card card-pad' });
+      mount.appendChild(yearCard);
+      await renderYearClose(el, yearCard, FA);
+
       // ---- Your data card -------------------------------------------------
       const dataCard = el('div', { class: 'card card-pad' });
       mount.appendChild(dataCard);
@@ -200,6 +205,72 @@
       card.appendChild(el('p', { class: 'section-help', style: { marginTop: '10px' } },
         'This date was derived automatically from your opening balance. Set it explicitly above if your books start on a different date.'));
     }
+  }
+
+  async function renderYearClose(el, card, FA) {
+    card.innerHTML = '';
+    card.appendChild(el('div', { class: 'section-title' }, 'Year-end close'));
+    card.appendChild(el('p', { class: 'section-help', style: { marginTop: '8px' } },
+      el('span', null,
+        'Closing a financial year posts a closing entry dated 31 December that moves the year’s profit or loss into ',
+        el('strong', null, 'retained earnings'),
+        ', then locks every month of that year so nothing else can be booked into it. Your next year builds on the closing balance. You can reopen a closed year if you need to make a correction.')));
+
+    // Default to the year of the current working month, if any.
+    let defYear = '';
+    const per = await FA.api('/api/periods');
+    if (per && !per.error && per.current && /^\d{4}/.test(per.current)) defYear = per.current.slice(0, 4);
+
+    const input = el('input', {
+      class: 'input', type: 'number', min: '2000', max: '2100', step: '1',
+      value: defYear, placeholder: 'YYYY', style: { maxWidth: '140px' },
+    });
+    const statusPill = el('span', { class: 'pill' }, '—');
+    const actionBtn = el('button', { class: 'btn btn-primary' }, 'Close year');
+
+    async function refreshStatus() {
+      const y = (input.value || '').trim();
+      if (!/^\d{4}$/.test(y)) {
+        statusPill.className = 'pill'; statusPill.textContent = '—';
+        actionBtn.style.display = 'none'; return;
+      }
+      const st = await FA.api('/api/year/' + y + '/status');
+      const closed = !!(st && !st.error && st.closed);
+      statusPill.className = 'pill ' + (closed ? 'pill-missing' : 'pill-ok');
+      statusPill.textContent = closed ? 'Closed' : 'Open';
+      actionBtn.style.display = '';
+      actionBtn.textContent = closed ? 'Reopen year' : 'Close year';
+      actionBtn.className = 'btn ' + (closed ? 'btn-ghost' : 'btn-primary');
+      actionBtn.dataset.closed = closed ? '1' : '';
+    }
+    input.addEventListener('input', refreshStatus);
+
+    actionBtn.addEventListener('click', async () => {
+      const y = (input.value || '').trim();
+      if (!/^\d{4}$/.test(y)) { FA.toast('Please enter a 4-digit year.', 'warn'); return; }
+      const closed = actionBtn.dataset.closed === '1';
+      const ok = await FA.confirmAction(closed
+        ? ('Reopen ' + y + '? This reverses the closing entry and unlocks every month of the year so you can make corrections.')
+        : ('Close ' + y + '? This posts a closing entry to retained earnings and locks every month of the year. You can reopen it later if needed.'));
+      if (!ok) return;
+      actionBtn.disabled = true;
+      const res = await FA.api('/api/year/' + (closed ? 'reopen' : 'close'), { json: { year: Number(y) } });
+      actionBtn.disabled = false;
+      if (res && res.error) { FA.toast(res.error, 'error'); return; }
+      if (closed) {
+        FA.toast('Reopened ' + y + '.', 'success');
+      } else {
+        const n = Number(res.netResult || 0);
+        const money = typeof FA.money === 'function' ? FA.money(Math.abs(n)) : Math.abs(n);
+        FA.toast('Closed ' + y + ' — ' + (n >= 0 ? 'profit' : 'loss') + ' of ' + money + ' to retained earnings.', 'success');
+      }
+      if (typeof FA.refreshChrome === 'function') FA.refreshChrome();
+      renderYearClose(el, card, FA);
+    });
+
+    card.appendChild(el('div', { class: 'row', style: { gap: '10px', alignItems: 'center', marginTop: '14px' } },
+      input, statusPill, actionBtn));
+    await refreshStatus();
   }
 
   // -- HELP ------------------------------------------------------------------

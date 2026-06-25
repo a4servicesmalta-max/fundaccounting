@@ -69,7 +69,7 @@ function glLine(
   txnDate: string,
   description: string,
   eventType: string,
-  source?: { txnId?: string; documentId?: string | null; docName?: string | null },
+  source?: { txnId?: string; documentId?: string | null; docName?: string | null; statementId?: string | null },
 ): PostedLineRow {
   return {
     accountCode: code,
@@ -85,6 +85,7 @@ function glLine(
     fxRateDate: null,
     documentId: source?.documentId ?? null,
     docName: source?.docName ?? null,
+    statementId: source?.statementId ?? null,
   };
 }
 
@@ -100,7 +101,7 @@ function bankLedgerLines(): PostedLineRow[] {
     const desc = t.description || 'Bank transaction';
     // A split line posts the bank movement against several accounts; the bank
     // side equals the sum of the (EUR-converted) allocations so the entry ties.
-    const src = { txnId: t.id, documentId: t.matchedDocumentId ?? null, docName: null };
+    const src = { txnId: t.id, documentId: t.matchedDocumentId ?? null, docName: null, statementId: t.statementId ?? null };
     if (Array.isArray(t.splits) && t.splits.length) {
       const eurs = t.splits.map((s) => toEur(s.amount, ccy, t.date));
       const total = round2(eurs.reduce((a, b) => a + b, 0));

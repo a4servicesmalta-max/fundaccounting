@@ -623,6 +623,7 @@ export type PostedLineRow = JournalLine & {
   fxRateDate: string | null;
   documentId: string | null; // source document, if any (doc↔entry linkage)
   docName: string | null;
+  statementId?: string | null; // bank statement this line came from (evidence link)
 };
 
 /** Flatten lines from all POSTED drafts into ledger rows. Each row carries its

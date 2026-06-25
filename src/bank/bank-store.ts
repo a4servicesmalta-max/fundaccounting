@@ -114,6 +114,10 @@ export function listStatements(accountId?: string): BankStatement[] {
   return all.filter((s) => (accountId ? s.bankAccountId === accountId : true));
 }
 
+export function getStatement(id: string): BankStatement | null {
+  return (getDb().bankStatements as BankStatement[]).find((s) => s.id === id) ?? null;
+}
+
 // --- Transactions -----------------------------------------------------------
 
 export function insertTransaction(t: BankTransaction): BankTransaction {

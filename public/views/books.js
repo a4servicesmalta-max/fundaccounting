@@ -699,6 +699,14 @@
             style: { marginLeft: '8px', fontSize: '11.5px' },
             title: 'Open the source document this entry came from' + (ln.docName ? ' (' + ln.docName + ')' : ''),
           }, '↗ source'));
+        } else if (ln.statementId) {
+          // A bank-statement-backed line: its evidence is the statement itself.
+          details.appendChild(el('a', {
+            href: '/api/bank/statements/' + encodeURIComponent(ln.statementId) + '/file',
+            target: '_blank', rel: 'noopener',
+            style: { marginLeft: '8px', fontSize: '11.5px' },
+            title: 'Open the bank statement this entry came from',
+          }, '↗ statement'));
         }
         var reversible = ln.txnId && ln.txnId !== 'gl' && ln.txnId !== 'opening'
           && ['BANK', 'ARAP', 'OPENING', 'REVERSAL'].indexOf(ln.eventType) < 0

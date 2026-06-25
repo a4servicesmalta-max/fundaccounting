@@ -6,7 +6,7 @@ import * as crypto from 'crypto';
 import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
 
-import { saveObject, uploadKey } from '../storage/objects';
+import { saveObject, uploadKey, readObject } from '../storage/objects';
 import { extractBankStatement } from '../ai/extract-bank';
 import { ingestStatement, type ExtractedBankStatement } from './ingest';
 import {
@@ -19,6 +19,7 @@ import {
   setTransactionSplits,
   fixTransactionDate,
   isHighConfidenceBankTxn,
+  getStatement,
 } from './bank-store';
 import { checkDate } from '../core/date-validate';
 import { reconcileAccount } from './reconcile';
@@ -163,6 +164,22 @@ bankRouter.get('/transactions', (req: Request, res: Response) => {
       ? (req.query.status as 'AUTO' | 'REVIEW' | 'POSTED' | 'REJECTED')
       : undefined;
   res.json({ transactions: listTransactions({ accountId, period, status }) });
+});
+
+// Serve a bank statement's original file (evidence for the bank lines it produced).
+const STMT_CT: Record<string, string> = { pdf: 'application/pdf', csv: 'text/csv', txt: 'text/plain', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
+bankRouter.get('/statements/:id/file', async (req: Request, res: Response) => {
+  const s = getStatement(req.params.id);
+  if (!s || !s.storedPath) return res.status(404).json({ error: 'Statement file not found.' });
+  try {
+    const bytes = await readObject(s.storedPath);
+    const ext = path.extname(s.storedPath).toLowerCase().replace(/^\./, '');
+    res.setHeader('Content-Type', STMT_CT[ext] || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${(s.fileName || 'statement').replace(/"/g, '')}"`);
+    res.end(bytes);
+  } catch {
+    res.status(404).json({ error: 'Statement file not found.' });
+  }
 });
 
 // --- mutations --------------------------------------------------------------

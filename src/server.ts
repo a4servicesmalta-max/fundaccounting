@@ -51,7 +51,7 @@ import { buildEvidenceZipBuffer } from './evidence/pack';
 import { approveDraft, approveAll, rejectDraft, editDraft, reverseDraft, closePeriod, reopenPeriod, closeYear, reopenYear, isYearClosed } from './posting/post';
 import { taxFlagsForDraft } from './core/tax-flags';
 import { composeFairValueRemeasurement } from './core/fair-value';
-import { portfolio, ledger, trialBalance, exportCsv, profitAndLoss, balanceSheet, navAllocation, ensureRevaluationRates } from './report/report';
+import { portfolio, ledger, trialBalance, exportCsv, profitAndLoss, balanceSheet, navAllocation, ensureRevaluationRates, isCashLine } from './report/report';
 import { buildFsReportHtml } from './report/fs-report';
 import { bankRouter } from './bank/bank.routes';
 import { arapRouter } from './arap/arap.routes';
@@ -710,7 +710,7 @@ app.get('/api/overview', async (_req: Request, res: Response) => {
     const cashEur =
       Math.round(
         ledger('all').lines
-          .filter((l) => /^(1010|1011|101|130|10[0-9]?0)$/.test(l.accountCode) || /bank|cash/i.test(l.accountName || ''))
+          .filter((l) => isCashLine(l.accountCode, l.accountName))
           .reduce((s, l) => s + (l.amount || 0), 0) * 100,
       ) / 100;
 

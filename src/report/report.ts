@@ -62,6 +62,15 @@ export function arapItemToEur(item: {
   return toEur(item.amount, item.currency, item.issueDate || item.dueDate || '');
 }
 
+/** True for a cash/bank ledger line. Matches the standard bank/cash codes, plus a
+ *  custom cash/bank account ONLY in the 1xxx asset range — so an expense like 6300
+ *  "Bank charges" (whose NAME contains "bank") is never miscounted as cash. */
+export function isCashLine(accountCode: string, accountName?: string | null): boolean {
+  const code = accountCode || '';
+  if (/^(1010|1011)$/.test(code)) return true;
+  return /^1\d{2,3}$/.test(code) && /\b(bank|cash)\b/i.test(accountName || '');
+}
+
 function glLine(
   code: string,
   amount: number,

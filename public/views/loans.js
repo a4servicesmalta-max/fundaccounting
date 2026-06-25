@@ -23,6 +23,17 @@
     return FA.el('span', { class: 'badge muted' }, type || '—');
   }
 
+  // The "source" cell — a link to the underlying evidence (source document or bank
+  // statement) when one is linked, else the plain source label.
+  function sourceCell(ev) {
+    var href = ev.documentId ? ('/api/documents/' + encodeURIComponent(ev.documentId) + '/file')
+      : ev.statementId ? ('/api/bank/statements/' + encodeURIComponent(ev.statementId) + '/file') : null;
+    var label = ev.source || '—';
+    if (!href) return FA.el('td', { class: 'muted' }, label);
+    return FA.el('td', { class: 'muted' },
+      FA.el('a', { href: href, target: '_blank', rel: 'noopener', title: 'Open the source evidence' }, '↗ ' + label));
+  }
+
   // Inline sub-row showing the full event history for one loan.
   function buildEventHistory(events, currency) {
     const rows = events
@@ -33,7 +44,7 @@
         FA.el('td', null, FA.fmtDate(ev.date)),
         FA.el('td', null, eventTypeBadge(ev.type)),
         FA.el('td', { class: 't-right num' }, FA.money(ev.amount, currency)),
-        FA.el('td', { class: 'muted' }, ev.source || '—')));
+        sourceCell(ev)));
 
     return FA.el('div', { style: { padding: '6px 8px 10px' } },
       FA.el('div', { class: 'muted', style: { fontSize: '12px', fontWeight: '600', margin: '2px 8px 8px' } }, 'Full history'),

@@ -208,3 +208,23 @@ test('the same borrower across name forms (S.A. vs Spółka Akcyjna, bank vs dra
   assert.equal(booste[0].advanced, 9000); // 3,000 (bank) + 6,000 (draft)
   assert.equal(booste[0].events.length, 2); // full transaction history
 });
+
+test('loan events carry an evidence link (statementId for bank, documentId for drafts)', () => {
+  initDb();
+  resetAll();
+  getDb().bankTransactions.push({
+    id: 'bt-ev', status: 'POSTED', postToCode: '032-x', currency: 'EUR', amount: -1000, date: '2025-03-01',
+    description: ' Acme 12 1140 0000 1111 2222 Loan Agreement', statementId: 'stmt-7',
+  });
+  const d = makeLoanDraft('LOAN_ADVANCE', 'Beta Bioscience', 4000, '2025-04-01');
+  d.documentId = 'doc-9';
+  insertDraft(d);
+  setDraftStatus(d.id, 'POSTED');
+  persist();
+
+  const rows = loansReport().loans;
+  const bankEv = rows.flatMap((l) => l.events).find((e) => e.source === 'bank-transaction');
+  assert.equal(bankEv!.statementId, 'stmt-7');
+  const draftEv = rows.flatMap((l) => l.events).find((e) => e.source === 'investment-draft');
+  assert.equal(draftEv!.documentId, 'doc-9');
+});

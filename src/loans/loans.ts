@@ -26,6 +26,10 @@ export interface LoanEvent {
   type: LoanEventType;
   amount: number;
   source: string;
+  // Evidence link: the source document (investment draft) or bank statement this
+  // event came from, so the loan history can open the underlying evidence.
+  documentId?: string | null;
+  statementId?: string | null;
 }
 
 export interface LoanRow {
@@ -74,6 +78,7 @@ export function loansReport(): LoansReport {
     amount: number,
     date: string,
     source: string,
+    evidence?: { documentId?: string | null; statementId?: string | null },
   ): void {
     const display = cleanPartyName(party);
     const key = groupKey(display, direction, currency);
@@ -87,7 +92,7 @@ export function loansReport(): LoansReport {
     const amt = round2(Math.abs(amount));
     if (type === 'ADVANCE') g.advanced += amt;
     else g.repaid += amt;
-    g.events.push({ date, type, amount: amt, source });
+    g.events.push({ date, type, amount: amt, source, documentId: evidence?.documentId ?? null, statementId: evidence?.statementId ?? null });
   }
 
   // (1) POSTED investment drafts — loans GRANTED to investees.
@@ -99,7 +104,7 @@ export function loansReport(): LoansReport {
     const currency = d.engineFigures?.currency || d.currency || 'EUR';
     const amount = d.engineFigures?.functionalAmount ?? 0;
     const type: LoanEventType = d.eventType === 'LOAN_ADVANCE' ? 'ADVANCE' : 'REPAYMENT';
-    bump(party, 'GRANTED', currency, type, amount, d.txnDate, 'investment-draft');
+    bump(party, 'GRANTED', currency, type, amount, d.txnDate, 'investment-draft', { documentId: d.documentId ?? null });
   }
 
   // (2) POSTED bank transactions — loans granted (032*) or borrowings (2300*).
@@ -127,7 +132,7 @@ export function loansReport(): LoansReport {
       type = moneyIn ? 'ADVANCE' : 'REPAYMENT';
     }
     const direction: LoanDirection = isGranted ? 'GRANTED' : 'BORROWED';
-    bump(party, direction, currency, type, signed, t.date, 'bank-transaction');
+    bump(party, direction, currency, type, signed, t.date, 'bank-transaction', { statementId: t.statementId ?? null, documentId: t.matchedDocumentId ?? null });
   }
 
   const loans: LoanRow[] = [...groups.values()]

@@ -80,6 +80,22 @@ function monthOf(date: string): string {
   return (date || '').slice(0, 7);
 }
 
+/**
+ * A "balance brought/carried forward" or "opening balance" LINE — the prior period's
+ * closing balance restated at the top of the statement. It is NOT a movement: ingesting
+ * it as a transaction clutters the list, posts to suspense, and double-counts the cash
+ * (and breaks the footing). Matched by description (EN + common PL/DE/FR terms).
+ */
+export function isBroughtForwardLine(description: string): boolean {
+  const d = (description || '').trim().toLowerCase();
+  if (!d) return false;
+  if (/\b(carry|carried|brought|balance)\s*(forward|fwd|b\/?f|c\/?f)\b/.test(d)) return true;
+  if (/\bb\/f\b|\bc\/f\b|\bbal\s*b\/?f\b|\bopening\s*balance\b|\bbalance\s*forward\b/.test(d)) return true;
+  // PL: saldo początkowe / z przeniesienia; DE: Saldovortrag / Übertrag; FR: solde reporté / à nouveau
+  if (/saldo\s*pocz[ąa]tkow|z\s*przeniesienia|przeniesienie\s*salda|saldo.?vortrag|(?:[üu]|ue)bertrag\b|solde\s*report|[àa]\s*nouveau/.test(d)) return true;
+  return false;
+}
+
 export function ingestStatement(extracted: ExtractedBankStatement): IngestResult {
   const db = getDb();
 
@@ -90,7 +106,11 @@ export function ingestStatement(extracted: ExtractedBankStatement): IngestResult
     extracted.currency,
   );
 
-  const txns = Array.isArray(extracted.transactions) ? extracted.transactions : [];
+  // Drop any brought-forward / opening-balance lines — they restate the opening
+  // balance and are not transactions (would post to suspense + double-count cash).
+  const txns = (Array.isArray(extracted.transactions) ? extracted.transactions : []).filter(
+    (t) => !isBroughtForwardLine(t.description),
+  );
 
   // 2a. Month-level dedup: which incoming months are already present?
   const present = new Set(monthsPresentForAccount(account.id));

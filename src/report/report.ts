@@ -478,7 +478,14 @@ export function navAllocation(holdings: AllocationHolding[], nav: number): Alloc
 // --- Ledger ------------------------------------------------------------------
 
 export function ledger(period?: string): { lines: PostedLineRow[] } {
-  const lines = [...postedLinesIn(period), ...extraLedgerLinesIn(period)];
+  // Present each line under the SAME control account the trial balance uses (030/032
+  // sub-accounts roll up to their parent), so the ledger's account list reconciles
+  // with the TB. The per-investee detail is preserved on the line (investeeName) for
+  // the Details column.
+  const lines = [...postedLinesIn(period), ...extraLedgerLinesIn(period)].map((ln) => {
+    const rolled = rollupForTrialBalance(ln.accountCode);
+    return rolled === ln.accountCode ? ln : { ...ln, accountCode: rolled, accountName: accountName(rolled) };
+  });
   lines.sort((a, b) => String(a.txnDate).localeCompare(String(b.txnDate)));
   return { lines };
 }

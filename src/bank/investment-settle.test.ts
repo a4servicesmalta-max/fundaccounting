@@ -93,7 +93,9 @@ test('matched investment cash leg is excluded from the GL — no double-count', 
 
   // After matching: cash and asset each counted once.
   assert.equal(balanceOf('1010'), -100000, '1010 moved once (investment Cr only)');
-  assert.equal(balanceOf('030-settleco'), 100000, '030 holding up once');
+  // The ledger presents the control account (030), matching the trial balance; the
+  // per-investee sub-account (030-settleco) rolls up into it.
+  assert.equal(balanceOf('030'), 100000, '030 holding up once');
 });
 
 test('a non-matching bank line (different amount) is left alone', () => {

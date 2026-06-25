@@ -176,3 +176,35 @@ test('loansReport aggregates POSTED bank transactions for granted (032*) and bor
   assert.equal(report.totals.borrowed, 15000);
   assert.equal(report.totals.outstanding, -12000);
 });
+
+test('bank-narration loans show a CLEAN party name, not the full transfer line', () => {
+  initDb();
+  resetAll();
+  getDb().bankTransactions.push({
+    id: 'bt-bartosz', status: 'POSTED', postToCode: '032-x', currency: 'EUR', amount: -3000, date: '2025-03-10',
+    description: 'Bartosz Lis 20 1140 2004 0000 3602 5599 3961 Loan Agreement PRZELEW ELIXIR - IBIZNES24',
+  });
+  persist();
+  const row = loansReport().loans.find((l) => l.party.startsWith('Bartosz'));
+  assert.ok(row, 'Bartosz row present');
+  assert.equal(row!.party, 'Bartosz Lis'); // not the account number / narration
+  assert.equal(row!.events.length, 1);
+});
+
+test('the same borrower across name forms (S.A. vs Spółka Akcyjna, bank vs draft) is ONE row', () => {
+  initDb();
+  resetAll();
+  getDb().bankTransactions.push({
+    id: 'bt-booste', status: 'POSTED', postToCode: '032-x', currency: 'EUR', amount: -3000, date: '2025-02-01',
+    description: 'Booste S.A. 10 1140 1137 0000 2639 3300 1001 Loan Agreement PRZELEW SORBNET',
+  });
+  const d = makeLoanDraft('LOAN_ADVANCE', 'Booste Spółka Akcyjna', 6000, '2025-04-01');
+  insertDraft(d);
+  setDraftStatus(d.id, 'POSTED');
+  persist();
+
+  const booste = loansReport().loans.filter((l) => l.party.toLowerCase().includes('booste'));
+  assert.equal(booste.length, 1, 'one merged Booste row');
+  assert.equal(booste[0].advanced, 9000); // 3,000 (bank) + 6,000 (draft)
+  assert.equal(booste[0].events.length, 2); // full transaction history
+});

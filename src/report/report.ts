@@ -516,9 +516,12 @@ export interface TrialBalanceReport {
 }
 
 /** Per-investee investment/loan sub-accounts (030-gamivo / 032-climax) roll up to
- *  their standard control parent (030 / 032) so the trial balance presents clean
- *  standard chart accounts; the per-holding detail stays in Portfolio/Ledger. */
+ *  their standard control parent so the trial balance presents clean standard chart
+ *  accounts; the per-holding detail stays in Portfolio/Ledger. Accrued loan interest
+ *  (032-1-*) rolls to its OWN control 032-1 — a distinct balance-sheet line from the
+ *  loan principal (032), matching the client's statutory books. */
 export function rollupForTrialBalance(code: string): string {
+  if (/^032-1(-|$)/.test(code)) return '032-1';
   return /^03[02]-/.test(code) ? code.split('-')[0] : code;
 }
 

@@ -9,8 +9,8 @@ import {
   profitAndLoss,
   balanceSheet,
   portfolio,
-  type StatementLine,
 } from './report';
+import { financialPositionRows, incomeStatementRows, type StatementRow } from './fs-lines';
 import { listPostedLines, getBooksOpeningDate } from '../db/store';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -58,12 +58,20 @@ function esc(s: string): string {
   return String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
 }
 
-function lineRows(lines: StatementLine[], cls = ''): string {
-  return lines
-    .map(
-      (l) =>
-        `<tr class="${cls}"><td class="acc">${l.accountCode && l.accountCode !== '—' ? esc(l.accountCode) + ' · ' : ''}${esc(l.accountName)}</td><td class="num">${money(l.amount)}</td></tr>`,
-    )
+/** Render a grouped statement (headers, indented detail lines, subtotals, totals)
+ *  reproducing the client workbook's line structure (see fs-lines). */
+function fsRows(rows: StatementRow[], badges: Record<string, string> = {}): string {
+  return rows
+    .map((r) => {
+      const badge = badges[r.id] || '';
+      if (r.kind === 'header') {
+        return `<tr class="section"><td>${esc(r.label)}${badge}</td><td class="num"></td></tr>`;
+      }
+      const trCls = r.kind === 'total' ? 'grand' : r.kind === 'subtotal' ? 'total' : '';
+      const tdCls = r.kind === 'line' && r.indent ? 'acc' : '';
+      const val = r.amount === null ? '' : money(r.amount);
+      return `<tr class="${trCls}"><td class="${tdCls}">${esc(r.label)}${badge}</td><td class="num">${val}</td></tr>`;
+    })
     .join('');
 }
 
@@ -94,6 +102,12 @@ export function buildFsReportHtml(period?: string, entityOrInfo?: string | FsCom
   const bs = balanceSheet(period);
   const tb = trialBalance(period);
   const pf = portfolio(period);
+  // Grouped statement rows reproducing the client workbook's line structure.
+  const isRows = incomeStatementRows(period);
+  const sofpRows = financialPositionRows(period);
+  const sofpTotalAssets = sofpRows.find((r) => r.id === 'total-assets')?.amount ?? 0;
+  const sofpTotalEqLiab = sofpRows.find((r) => r.id === 'total-eq-liab')?.amount ?? 0;
+  const sofpBalanced = Math.abs(sofpTotalAssets - sofpTotalEqLiab) < 0.01;
   const rp = deriveReportingPeriod(period, latestPostedPeriod(), getBooksOpeningDate());
   const lbl = rp.label;
   const yr = rp.year;
@@ -225,14 +239,8 @@ export function buildFsReportHtml(period?: string, entityOrInfo?: string | FsCom
   <h2 class="sec">Statement of Comprehensive Income</h2>
   <p class="sub">For ${esc(lbl)} · in ${esc(ccy)}</p>
   <table>
-    <tr><th>Account</th><th class="num">${esc(yr)}</th></tr>
-    <tr class="section"><td>Income</td><td class="num"></td></tr>
-    ${lineRows(pl.revenue) || '<tr><td class="acc">No income recognised</td><td class="num">€0.00</td></tr>'}
-    <tr class="total"><td class="acc">Total income</td><td class="num">${money(pl.totalRevenue)}</td></tr>
-    <tr class="section"><td>Expenditure</td><td class="num"></td></tr>
-    ${lineRows(pl.expenses) || '<tr><td class="acc">No expenditure recognised</td><td class="num">€0.00</td></tr>'}
-    <tr class="total"><td class="acc">Total expenditure</td><td class="num">${money(pl.totalExpenses)}</td></tr>
-    <tr class="grand"><td>${profitWord}</td><td class="num">${money(pl.netProfit)}</td></tr>
+    <tr><th>Income statement</th><th class="num">${esc(yr)}</th></tr>
+    ${fsRows(isRows)}
   </table>
   <p class="sub" style="margin-top:18px">The notes on the following pages form part of these financial statements.</p>
   <div class="pnum">— 3 —</div>
@@ -244,17 +252,8 @@ export function buildFsReportHtml(period?: string, entityOrInfo?: string | FsCom
   <h2 class="sec">Statement of Financial Position</h2>
   <p class="sub">As at the end of ${esc(lbl)} · in ${esc(ccy)}</p>
   <table>
-    <tr><th>Account</th><th class="num">${esc(yr)}</th></tr>
-    <tr class="section"><td>Assets</td><td class="num"></td></tr>
-    ${lineRows(bs.assets) || '<tr><td class="acc">None</td><td class="num">€0.00</td></tr>'}
-    <tr class="total"><td class="acc">Total assets</td><td class="num">${money(bs.totalAssets)}</td></tr>
-    <tr class="section"><td>Liabilities</td><td class="num"></td></tr>
-    ${lineRows(bs.liabilities) || '<tr><td class="acc">None</td><td class="num">€0.00</td></tr>'}
-    <tr class="total"><td class="acc">Total liabilities</td><td class="num">${money(bs.totalLiabilities)}</td></tr>
-    <tr class="section"><td>Equity</td><td class="num"></td></tr>
-    ${lineRows(bs.equity) || '<tr><td class="acc">None</td><td class="num">€0.00</td></tr>'}
-    <tr class="total"><td class="acc">Total equity</td><td class="num">${money(bs.totalEquity)}</td></tr>
-    <tr class="grand"><td>Total liabilities and equity${bs.balanced ? '<span class="badge">Balanced</span>' : '<span class="badge warn">Out of balance</span>'}</td><td class="num">${money(bs.totalLiabilities + bs.totalEquity)}</td></tr>
+    <tr><th>Statement of financial position</th><th class="num">${esc(yr)}</th></tr>
+    ${fsRows(sofpRows, { 'total-eq-liab': sofpBalanced ? '<span class="badge">Balanced</span>' : '<span class="badge warn">Out of balance</span>' })}
   </table>
   <div class="pnum">— 4 —</div>
 </section>

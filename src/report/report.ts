@@ -1,8 +1,8 @@
 // Reports (CONTRACT §8): portfolio, ledger, trial balance, and CSV export.
 // All figures come from POSTED journal lines — never from the AI.
 
-import { accountName, getRegisteredChart, type AccountType } from '../core/chart';
-import { inferAccountType } from '../core/chart-store';
+import { accountName, type AccountType } from '../core/chart';
+import { resolveAccountType } from '../core/chart-store';
 import { assertControlInvariant } from '../core/invariant';
 import { listDrafts, listPostedLines, getFxRate, type DraftRecord, type PostedLineRow } from '../db/store';
 import { loadRates } from '../fx/rates';
@@ -554,14 +554,10 @@ export function trialBalance(period?: string): TrialBalanceReport {
 
 // --- Management accounts: P&L and Balance Sheet ------------------------------
 
-/** Resolve an account's type from the chart (or infer from its code). */
+/** Resolve an account's type from the chart (registry → statutory overlay →
+ *  parent → digit). Single source of truth in chart-store. */
 function typeOf(code: string): AccountType {
-  const chart = getRegisteredChart();
-  const exact = chart.find((a) => a.code === code);
-  if (exact) return exact.type;
-  const parent = chart.find((a) => a.code === code.split('-')[0]);
-  if (parent) return parent.type;
-  return inferAccountType(code);
+  return resolveAccountType(code);
 }
 
 /** Bank + AR/AP GL lines cumulative up to and including the period (for the BS). */

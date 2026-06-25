@@ -11,6 +11,7 @@ import {
   getRegisteredChart,
   isKnownAccount,
 } from './chart';
+import { statutoryType } from './statutory-chart';
 import { getDb, persist } from '../db/store';
 
 /** Best-effort account type from the leading digit of a code. Handles both the
@@ -20,6 +21,11 @@ import { getDb, persist } from '../db/store';
  *  reserves → equity). Crucially, an UNRECOGNISED code defaults to ASSET (balance
  *  sheet), NOT expense — a wrong default of EXPENSE silently pollutes the P&L. */
 export function inferAccountType(code: string): AccountType {
+  // THCP statutory codes (continental convention) are classified explicitly first
+  // — their leading digit lies under the app's heuristic (e.g. 4xx = cost not
+  // revenue, 75x = revenue not asset, 240 = receivable not liability).
+  const statutory = statutoryType(code);
+  if (statutory) return statutory;
   const head = code.replace(/[^0-9]/g, '').charAt(0);
   switch (head) {
     case '0': // investment controls 030/032, accrued interest 032-1
@@ -41,6 +47,25 @@ export function inferAccountType(code: string): AccountType {
   }
 }
 
+/** The authoritative account-type resolver used by the reports. Precedence:
+ *  1. an exact entry in the chart registry (built-in app + statutory + custom),
+ *  2. the THCP statutory overlay (covers sub-accounts like 240-OD, 402-THCP),
+ *  3. the registry entry for the parent code (e.g. 030-gamivo → 030),
+ *  4. the leading-digit fallback (inferAccountType).
+ *  This single function keeps the balance sheet / P&L classification consistent
+ *  across the app chart and the imported statutory chart. */
+export function resolveAccountType(code: string): AccountType {
+  const c = String(code || '').trim();
+  const chart = getRegisteredChart();
+  const exact = chart.find((a) => a.code === c);
+  if (exact) return exact.type;
+  const statutory = statutoryType(c);
+  if (statutory) return statutory;
+  const parent = chart.find((a) => a.code === c.split('-')[0]);
+  if (parent) return parent.type;
+  return inferAccountType(c);
+}
+
 /** Load persisted custom accounts into the registry. Call once after initDb().
  *  Self-heals types poisoned by an older import: a balance-sheet code (e.g. an
  *  imported 030/032/801/802/860) that was stored as a P&L type (EXPENSE/REVENUE)
@@ -52,12 +77,22 @@ export function hydrateChartFromStore(): void {
   let changed = false;
   for (const a of db.chartAccounts) {
     if (!a || !a.code) continue;
-    const inferred = inferAccountType(a.code);
-    const inferredIsBalanceSheet = inferred === 'ASSET' || inferred === 'LIABILITY' || inferred === 'EQUITY';
-    const storedIsPl = a.type === 'EXPENSE' || a.type === 'REVENUE';
-    if (storedIsPl && inferredIsBalanceSheet) {
-      a.type = inferred;
+    // Self-heal a poisoned type. A known statutory code is authoritative — correct
+    // it outright (e.g. an imported 750-1 stored as ASSET → REVENUE, a 402 stored as
+    // REVENUE → EXPENSE, a 240 stored as LIABILITY → ASSET). Otherwise keep the older,
+    // narrower safety net: demote a balance-sheet code wrongly stored as a P&L type.
+    const statutory = statutoryType(a.code);
+    if (statutory && a.type !== statutory) {
+      a.type = statutory;
       changed = true;
+    } else if (!statutory) {
+      const inferred = inferAccountType(a.code);
+      const inferredIsBalanceSheet = inferred === 'ASSET' || inferred === 'LIABILITY' || inferred === 'EQUITY';
+      const storedIsPl = a.type === 'EXPENSE' || a.type === 'REVENUE';
+      if (storedIsPl && inferredIsBalanceSheet) {
+        a.type = inferred;
+        changed = true;
+      }
     }
     registerAccount(a);
   }
@@ -79,7 +114,7 @@ export function ensureAccount(code: string, name?: string, type?: AccountType): 
   const account: Account = {
     code: trimmedCode,
     name: name && name.trim() ? name.trim() : trimmedCode,
-    type: type || inferAccountType(trimmedCode),
+    type: type || resolveAccountType(trimmedCode),
   };
   registerAccount(account);
 

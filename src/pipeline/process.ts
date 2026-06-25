@@ -681,7 +681,7 @@ export async function processFile(input: ProcessInput): Promise<ProcessOutcome> 
     const refs: FundAccountRefs = {
       controlCode,
       bankCode: '1010',
-      gainLossCode: '500', // realised gain/loss on disposal of shares
+      gainLossCode: '750-1', // realised gain/loss on share disposals → statutory revenue line ('500' is THCP short-term liabilities)
       incomeCode: '4000', // investment income / distributions (dividends)
       interestIncomeCode: '510', // loan interest income (own line; matches the bank/cash path)
       fxCode: '6800', // FX gain/loss

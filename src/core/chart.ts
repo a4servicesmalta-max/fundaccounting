@@ -1,4 +1,5 @@
 import type { Instrument } from './types';
+import { STATUTORY_CHART } from './statutory-chart';
 
 export type AccountType = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
@@ -24,7 +25,9 @@ export const CHART: Account[] = [
   // Income
   { code: '4000', name: 'Investment income', type: 'REVENUE' },
   { code: '4010', name: 'Other income', type: 'REVENUE' },
-  { code: '500', name: 'Gain on disposal of shares', type: 'REVENUE' },
+  // Realised gain/loss on share disposals is booked to the statutory revenue line
+  // 750-1 (see statutory-chart). Code 500 is reserved for THCP's statutory
+  // "Short-term liabilities" and must NOT be reused for disposal gains.
   { code: '510', name: 'Loan interest income', type: 'REVENUE' },
   { code: '710', name: 'Fair-value movement on investments', type: 'REVENUE' },
   // Operating expenses (bank-line categorisation targets)
@@ -55,7 +58,14 @@ export function controlCodeFor(instrument: Instrument): '030' | '032' {
 // dropdown and report with a friendly name. Seeded from the built-in CHART;
 // custom additions are persisted by chart-store and re-hydrated on boot.
 
-const registry = new Map<string, Account>(CHART.map((a) => [a.code, a]));
+// The registry is seeded from the app's built-in CHART plus the THCP statutory
+// overlay (correct names + structural types for the continental codes that arrive
+// via opening balances / imported trial balances). App codes take precedence where
+// both define the same code; statutory codes the app doesn't define are added.
+const registry = new Map<string, Account>([
+  ...STATUTORY_CHART.map((a) => [a.code, a] as const),
+  ...CHART.map((a) => [a.code, a] as const),
+]);
 
 /** Add or replace an account in the in-memory registry. */
 export function registerAccount(account: Account): void {
@@ -75,6 +85,7 @@ export function isKnownAccount(code: string): boolean {
 /** Reset the registry back to the built-in CHART (used by "Start over"). */
 export function resetRegistry(): void {
   registry.clear();
+  for (const a of STATUTORY_CHART) registry.set(a.code, a);
   for (const a of CHART) registry.set(a.code, a);
 }
 

@@ -56,7 +56,7 @@ const RATES: RatePoint[] = [
 const CCYS = ['EUR', 'EUR', 'EUR', 'PLN', 'USD', 'GBP']; // EUR-weighted
 
 const REFS = (controlCode: string): FundAccountRefs => ({
-  controlCode, bankCode: '1010', gainLossCode: '500', incomeCode: '4000', fxCode: '6800', writeOffCode: '610',
+  controlCode, bankCode: '1010', gainLossCode: '750-1', incomeCode: '4000', fxCode: '6800', writeOffCode: '610',
 });
 
 function slug(s: string): string {

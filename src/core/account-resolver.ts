@@ -19,7 +19,7 @@ const NAME_RULES: ReadonlyArray<readonly [RegExp, string]> = [
   [/loan\s*interest|interest\s*income/i, '510'],
   [/interest\s*expens|loan\s*interest\s*paid/i, '6400'],
   [/dividend|investment\s*income|distribution/i, '4000'],
-  [/gain\s*on\s*disposal|realis\w*\s*gain/i, '500'],
+  [/gain\s*on\s*disposal|realis\w*\s*gain/i, '750-1'],
   [/impair|write[\s-]?off|write[\s-]?down/i, '610'],
   [/fair[\s-]?value/i, '710'],
   [/foreign\s*exchange|\bfx\b|exchange\s*(gain|loss)/i, '6800'],

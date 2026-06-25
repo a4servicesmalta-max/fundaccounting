@@ -18,6 +18,7 @@ import {
   setTransactionStatus,
   setTransactionSplits,
   fixTransactionDate,
+  isHighConfidenceBankTxn,
 } from './bank-store';
 import { checkDate } from '../core/date-validate';
 import { reconcileAccount } from './reconcile';
@@ -182,6 +183,26 @@ bankRouter.post('/transactions/:id/post-to', (req: Request, res: Response) => {
     setTransactionStatus(txn.id, 'POSTED');
   }
   return res.json({ transaction: getTransaction(txn.id) });
+});
+
+// Bulk-approve every high-confidence (AUTO, real account, no date flag) transaction —
+// optionally scoped to an account/period. Low-confidence (REVIEW / 9999 / unset) lines
+// are left for the reviewer.
+bankRouter.post('/transactions/approve-all', (req: Request, res: Response) => {
+  const accountId = typeof req.body?.accountId === 'string' ? req.body.accountId : undefined;
+  const period = typeof req.body?.period === 'string' && req.body.period !== 'all' ? req.body.period : undefined;
+  const candidates = listTransactions({ accountId, period, status: 'AUTO' });
+  let approved = 0;
+  let skipped = 0;
+  for (const t of candidates) {
+    if (isHighConfidenceBankTxn(t)) {
+      setTransactionStatus(t.id, 'POSTED');
+      approved += 1;
+    } else {
+      skipped += 1;
+    }
+  }
+  return res.json({ approved, skipped });
 });
 
 bankRouter.post('/transactions/:id/approve', (req: Request, res: Response) => {

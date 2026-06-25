@@ -430,12 +430,43 @@
       el('span', { class: 'ico', html: FA.icon('review') }), 'Help me classify' + (unknown ? ' (' + unknown + ')' : ''));
     classifyBtn.addEventListener('click', function () { openClassifyGuide(FA); });
 
+    // Approve every high-confidence (auto-categorised, real account) line in one click.
+    var ready = currentTxns.filter(isReadyToApprove).length;
+    var approveBtn = el('button', { class: 'btn btn-primary btn-sm',
+      title: 'Post every high-confidence (auto-categorised) transaction; low-confidence lines stay for review' },
+      el('span', { class: 'ico', html: FA.icon('review') }), 'Approve all ready' + (ready ? ' (' + ready + ')' : ''));
+    if (!ready) approveBtn.disabled = true;
+    approveBtn.addEventListener('click', function () { runApproveAll(FA, approveBtn); });
+
     return el('div', { class: 'card card-pad spread', style: { gap: '12px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '14px' } },
       el('div', { class: 'row', style: { gap: '10px', flexWrap: 'wrap', alignItems: 'center' } },
         el('span', { class: 'muted', style: { fontSize: '13px' } }, 'Filter'), sel, search,
         el('span', { class: 'muted', style: { fontSize: '13px' } }, 'Dates'), fromIn,
         el('span', { class: 'muted', style: { fontSize: '13px' } }, '→'), toIn),
-      el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, matchBtn, classifyBtn));
+      el('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, matchBtn, classifyBtn, approveBtn));
+  }
+
+  // A high-confidence line ready to bulk-approve: auto-categorised, real account, no date flag.
+  function isReadyToApprove(t) {
+    var s = String(t.status || '').toUpperCase();
+    return s === 'AUTO' && t.postToCode && t.postToCode !== '9999' && !t.dateFlag;
+  }
+
+  async function runApproveAll(FA, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Approving…'; }
+    var body = { accountId: selectedId };
+    if (FA.state.period && FA.state.period !== 'all') body.period = FA.state.period;
+    var r = await FA.api('/api/bank/transactions/approve-all', { json: body });
+    if (!r || r.error) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Approve all ready'; }
+      FA.toast((r && r.error) || 'Could not approve.', 'error');
+      return;
+    }
+    var n = Number(r.approved) || 0;
+    FA.toast(n ? (n + ' transaction' + (n === 1 ? '' : 's') + ' approved'
+      + (r.skipped ? ('; ' + r.skipped + ' left for review') : '') + '.') : 'Nothing ready to approve.', n ? 'success' : '');
+    await renderAccount(FA, accountDetailHost);
+    if (typeof FA.refreshChrome === 'function') FA.refreshChrome();
   }
 
   async function runRematch(FA, btn) {

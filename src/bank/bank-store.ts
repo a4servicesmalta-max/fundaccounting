@@ -141,6 +141,18 @@ export function getTransaction(id: string): BankTransaction | null {
   return (getDb().bankTransactions as BankTransaction[]).find((t) => t.id === id) ?? null;
 }
 
+/** A high-confidence categorisation that can be bulk-approved: auto-categorised (not
+ *  flagged for review) and posted to a real account (not the 9999 suspense / unset). */
+export function isHighConfidenceBankTxn(t: Pick<BankTransaction, 'status' | 'postToCode' | 'dateFlag'>): boolean {
+  return (
+    t.status === 'AUTO' &&
+    typeof t.postToCode === 'string' &&
+    t.postToCode !== '' &&
+    t.postToCode !== '9999' &&
+    !t.dateFlag // an impossible-date line is never auto-posted
+  );
+}
+
 /** Set the account a transaction is posted to (looks up the friendly name). */
 export function setTransactionPostTo(id: string, code: string, name: string): void {
   const t = getTransaction(id);
